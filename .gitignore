@@ -1,0 +1,9 @@
+.zencoder/
+.idea/
+.venv/
+.vscode/*
+*.pyc
+*.pyo
+.coverage
+.DS*
+.env

@@ -1,0 +1,159 @@
+groups:
+  - name: recording_rules
+    rules:
+      - record: container_cpu:usage:percent
+        expr: 100*max(rate(container_cpu_usage_seconds_total{}[5m]))by(namespace,pod) / max(kube_pod_container_resource_limits{resource="cpu"})by(namespace,pod)
+      - record: container_memory:usage:percent
+        expr: 100*max(rate(container_memory_working_set_bytes{}[5m]))by(namespace,pod) / max(kube_pod_container_resource_limits{resource="memory"})by(namespace,pod)
+      - record: node_cpu:usage:percent
+        expr: 100 * (1 - avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])))
+      - record: node_memory:usage:percent
+        expr: max(100 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes * 100)by(instance)
+      - record: node_filesystem:usage:percent
+        expr: 100*max((node_filesystem_size_bytes{} - node_filesystem_free_bytes{}) / node_filesystem_size_bytes{})by(device,fstype,instance)
+      - record: kube_node:memory:overcommitment
+        expr: (sum(sum(kube_pod_container_resource_limits{resource="memory"}) by (pod, node) * on (pod) group_left max(kube_pod_status_ready) by (pod, node)) by (node)) / sum(kube_node_status_allocatable{resource="memory"}) by (node) * 100
+  - name: alerting_rules
+    rules:
+      - alert: container_cpu:usage:percent
+        expr: container_cpu:usage:percent >= {$CPU.UTIL.CONTAINER.MAX:"{{$labels.pod}}"}
+        annotations:
+          description: pod:"{{$labels.pod}}" namespace:"{{$labels.namespace}}" value:"{{$value}}"
+          summary: Pod {{$labels.pod}} in {{$labels.namespace}} has CPU usage greater than {$CPU.UTIL.CONTAINER.MAX:"{{$labels.pod}}"}% last 5m
+        labels: {}
+      - alert: container_memory:usage:percent
+        expr: container_memory:usage:percent >= {$MEM.UTIL.CONTAINER.MAX:"{{$labels.pod}}"}
+        annotations:
+          description: pod:"{{$labels.pod}}" namespace:"{{$labels.namespace}}" value:"{{$value}}"
+          summary: Pod {{$labels.pod}} in {{$labels.namespace}} has MEM usage greater than {$MEM.UTIL.CONTAINER.MAX:"{{$labels.pod}}"}% last 5m
+        labels: {}
+      - alert: node_cpu:usage:percent
+        expr: node_cpu:usage:percent >= {$CPU.UTIL.NODE.MAX}
+        annotations:
+          description: usage:"{{$value}}"
+          summary: CPU usage on {{ $labels.instance }} has been above {$CPU.UTIL.NODE.MAX}% for the last 5 minutes.
+        labels: {}
+      - alert: node_memory:usage:percent
+        expr: node_memory:usage:percent >= {$MEM.UTIL.NODE.MAX}
+        annotations:
+          description: usage:"{{$value}}"
+          summary: CPU usage on {{ $labels.instance }} has been above {$CPU.UTIL.NODE.MAX}% for the last 5 minutes.
+        labels: {}
+      - alert: node_filesystem:usage:percent
+        expr: node_filesystem:usage:percent >= {$VFS.FS.USED.MAX:"{{$labels.device}}"}
+        annotations:
+          description: fstype:"{{$labels.fstype}}" usage:"{{$value}}"
+          summary: Device {{$labels.device}} on {{$labels.instance}} space usage greater then {$CPU.UTIL.NODE.MAX}%
+        labels: {}
+      - alert: kube_node:memory:overcommitment
+        expr: kube_node:memory:overcommitment >= {$KUBE.NODE.MEM.OVERCOMMITMENT.MAX}
+        annotations:
+          description: usage:"{{$value}}"
+          summary: Memory overcommitment on {{$labels.node}} greater then {$KUBE.NODE.MEM.OVERCOMMITMENT.MAX}%
+        labels: {}
+prometheus:
+  api:
+    url: "http://prometheus.monitoring.svc:9090/api/v1/query"
+  labels_to_zabbix_macros:
+    - pattern: '\{\{(?:\s*)\$value(?:\s*)\}\}'
+      value: "{ITEM.VALUE1}"
+    - pattern: '\{\{(?:\s*)\$labels\.(?P<label>[a-zA-Z0-9\_\-]*)(?:\s*)\}\}'
+      value: "{#\\g<label>}"
+  query_chars_encoding:
+    - char: "+"
+      encode: "%2B"
+promabbix:
+  zabbix_depend_item_preprocessing: |-
+    $.metrics["{#ZBX.ITEM.SUBKEY}"]
+  zabbix_master_item_preprocessing: |-
+    var ingest_json = JSON.parse(value),
+        metrics = ingest_json.data.result || [],
+        result = { "lld": [], "metrics": {} },
+        maxDynamicTags = 10;
+
+    for (var i = 0, metricsLength = metrics.length; i < metricsLength; i++) {
+        var metric = metrics[i],
+            metricObj = metric.metric,
+            keys = Object.keys(metricObj);
+
+        var llds = {},
+            label_values = [],
+            j = 0;
+
+        for (; j < keys.length && j < maxDynamicTags; j++) {
+            var key = keys[j];
+            var val = metricObj[key];
+            llds["{#" + key.toUpperCase() + "}"] = val;
+            llds["{#TAG" + j + "KEY}"] = key;
+            llds["{#TAG" + j + "VAL}"] = val;
+            label_values.push(val);
+        }
+
+        for (; j < maxDynamicTags; j++) {
+            llds["{#TAG" + j + "KEY}"] = "zbx_dyntag";
+            llds["{#TAG" + j + "VAL}"] = "zbx_tag" + j;
+        }
+
+        var subkey = label_values.join(';');
+        llds["{#ZBX.ITEM.SUBKEY}"] = subkey;
+        result.lld.push(llds);
+
+        var metricValue = metric.value[1];
+        result.metrics[subkey] = metricValue ? parseFloat(metricValue).toFixed(2) : "NaN";
+    }
+
+    return JSON.stringify(result);
+zabbix:
+  template_prefix: templ_module_promt_kube
+  template: minikube
+  name: "Template Module Prometheus minikube"
+  hosts:
+    - host_name: minikube
+      visible_name: minikube
+      host_groups:
+        - Kubernetes
+      link_templates:
+        - templ_module_promt_kube_minikube # zabbix.template_prefix + zabbix.template
+      status: enabled
+      state: present
+      macros:
+        - macro: "{$CPU.UTIL.NODE.MAX}"
+          value: "60"
+          description: "This macro is used in prometheus discovery. Can be overridden on the host or linked template level."
+  labels:
+    __zbx_trigger_expression: "{{ trigger_expression }} and nodata({{ item_key }},{$ZBX.TRIGGER.RESOLVE.NO_DATA.TIME})=0"
+    __zbx_item_lifetime: "1h"
+  macros:
+    - macro: "{$CPU.UTIL.NODE.MAX}"
+      value: "80"
+      description: "This macro is used in prometheus discovery. Can be overridden on the host or linked template level."
+    - macro: "{$MEM.UTIL.NODE.MAX}"
+      value: "80"
+      description: "This macro is used in prometheus discovery. Can be overridden on the host or linked template level."
+    - macro: "{$CPU.UTIL.CONTAINER.MAX}"
+      value: "80"
+      description: "This macro is used in prometheus discovery. Can be overridden on the host or linked template level."
+    - macro: '{$CPU.UTIL.CONTAINER.MAX:regex:"^coredns.*$"}'
+      value: "90"
+      description: "This macro is used in prometheus discovery. Can be overridden on the host or linked template level."
+    - macro: "{$MEM.UTIL.CONTAINER.MAX}"
+      value: "80"
+      description: "This macro is used in prometheus discovery. Can be overridden on the host or linked template level."
+    - macro: '{$MEM.UTIL.CONTAINER.MAX:regex:"^postgres.*$"}'
+      value: "90"
+      description: "This macro is used in prometheus discovery. Can be overridden on the host or linked template level."
+    - macro: "{$VFS.FS.USED.MAX}"
+      value: "80"
+      description: "This macro is used in prometheus discovery. Can be overridden on the host or linked template level."
+    - macro: '{$VFS.FS.USED.MAX:"/dev/root"}'
+      value: "90"
+      description: "This macro is used in prometheus discovery. Can be overridden on the host or linked template level."
+    - macro: '{$KUBE.NODE.MEM.OVERCOMMITMENT.MAX}'
+      value: "100"
+      description: "This macro is used in prometheus discovery. Can be overridden on the host or linked template level."
+    - macro: "{$ZBX.TRIGGER.RESOLVE.NO_DATA.TIME}"
+      value: "5m"
+      description: "This macro is used in prometheus discovery. Can be overridden on the host or linked template level."
+  tags:
+    - tag: __metric_source
+      value: prometheus

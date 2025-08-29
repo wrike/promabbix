@@ -1,0 +1,298 @@
+{%- macro serializeLabelsToZabbixMacros(value, labels_to_zabbix_macros) -%}
+  {%- set replaced_value = [value | string] -%}
+  {%- for item in labels_to_zabbix_macros -%}
+    {%- set _ = replaced_value.append(replaced_value | last | regex_replace(item.pattern, item.value, ignorecase=True, multiline=True)) -%}
+  {%- endfor -%}
+  {%- set macros = replaced_value | last | regex_findall('\{#[A-Za-z0-9_\-]+\}') -%}
+  {%- for macro in macros -%}
+    {%- set _ = replaced_value.append(replaced_value | last | replace(macro, macro | upper)) -%}
+  {%- endfor -%}
+  {{ replaced_value | last }}
+{%- endmacro -%}
+{%- macro encodeURIPrometheusQuery(value, query_chars_encoding) -%}
+  {%- set replaced_value = [value | string] -%}
+  {%- for item in query_chars_encoding -%}
+    {%- set _ = replaced_value.append(replaced_value | last | replace(item.char, item.encode)) -%}
+  {%- endfor -%}
+  {{ replaced_value | last }}
+{%- endmacro -%}
+{%- macro toZabbixExpression(key, expr, item_prototype_key_path, labels_to_zabbix_macros) -%}
+  {%- set zbx_key = ("last(" + item_prototype_key_path + ")") -%}
+  {%- set formatted_value = expr | string | replace(key, zbx_key)  -%}
+  {%- set formatted_zbx_expr = formatted_value | replace(" ", "") | replace("==", "=") | replace("!=", "<>")  -%}
+  {{ serializeLabelsToZabbixMacros(formatted_zbx_expr, labels_to_zabbix_macros) }}
+{%- endmacro -%}
+{%- set recording_rules = [] -%}
+{%- for r_rules in groups if r_rules.name == "recording_rules" -%}
+  {%- for r_rule in r_rules.rules -%}
+    {%- if r_rule not in recording_rules -%}
+      {%- set _ = recording_rules.append(r_rule) -%}
+    {%- endif -%}
+  {%- endfor -%}
+{%- endfor -%}
+{%- set alerting_rules = [] -%}
+{%- for a_rules in groups if a_rules.name == "alerting_rules" -%}
+  {%- for a_rule in a_rules.rules -%}
+    {%- set _ = alerting_rules.append(a_rule) -%}
+  {%- endfor -%}
+{%- endfor -%}
+{% set ns = {} %}
+{% set _ = ns.update({ "common_zbx_tag_dict": (zabbix.labels | default({}) | dict2items | selectattr("key", "match", "^__zbx_.*") | list | items2dict) }) %}
+{% set _ = ns.update({ "common_tag_dict": (zabbix.labels | default({}) | dict2items | selectattr("key", "match", "^(?!__zbx_.*)") | list | items2dict) }) %}
+{% set _ = ns.update({ "template_full_name": ((zabbix.template_prefix | default('templ_module_promt_kube')) + '_' + zabbix.template) }) %}
+{% set _ = ns.update({ "promabbix": {
+  "zabbix_master_item_preprocessing": "var ingest_json = JSON.parse(value),\n    metrics = ingest_json.data.result || [],\n    result = { \"lld\": [], \"metrics\": {} },\n    maxDynamicTags = 10;\n\nfor (var i = 0, metricsLength = metrics.length; i < metricsLength; i++) {\n    var metric = metrics[i],\n        metricObj = metric.metric,\n        keys = Object.keys(metricObj);\n\n    var llds = {},\n        label_values = [],\n        j = 0;\n\n    for (; j < keys.length && j < maxDynamicTags; j++) {\n        var key = keys[j];\n        var val = metricObj[key];\n        llds[\"{#\" + key.toUpperCase() + \"}\"] = val;\n        llds[\"{#TAG\" + j + \"KEY}\"] = key;\n        llds[\"{#TAG\" + j + \"VAL}\"] = val;\n        label_values.push(val);\n    }\n\n    for (; j < maxDynamicTags; j++) {\n        llds[\"{#TAG\" + j + \"KEY}\"] = \"zbx_dyntag\";\n        llds[\"{#TAG\" + j + \"VAL}\"] = \"zbx_tag\" + j;\n    }\n\n    var subkey = label_values.join(';');\n    llds[\"{#ZBX.ITEM.SUBKEY}\"] = subkey;\n    result.lld.push(llds);\n\n    var metricValue = metric.value[1];\n    result.metrics[subkey] = metricValue ? parseFloat(metricValue).toFixed(2) : \"NaN\";\n}\n\nreturn JSON.stringify(result);",
+  "zabbix_depend_item_preprocessing": "$.metrics[\"{#ZBX.ITEM.SUBKEY}\"]"
+}}) %}
+{% set _ = ns.update({ "prometheus": {
+  "api": {"url": "http://localhost:9090/api/v1/query", "username": "", "password": ""},
+  "labels_to_zabbix_macros": [
+    {
+      "pattern": "\{\{(?:\s*)\$value(?:\s*)\}\}",
+      "value": "{ITEM.VALUE1}",
+    },
+    {
+      "pattern": "\{\{(?:\s*)\$labels\.(?P<label>[a-zA-Z0-9\_\-]*)(?:\s*)\}\}",
+      "value": "{#\\g<label>}",
+    }
+  ],
+  "query_chars_encoding": [
+    {
+      "char": "+",
+      "encode": "%2B"
+    }
+  ]
+} }) %}
+{% set _ = ns.update({ "promabbix": (ns.promabbix | combine( (promabbix | default({}) ), list_merge="append_rp", recursive=true)) }) %}
+{% set _ = ns.update({ "prometheus": (ns.prometheus | combine( (prometheus | default({}) ), list_merge="append_rp", recursive=true)) }) %}
+{% set _ = ns.update({ "zbx_items": {} }) %}
+{% for r_rule in recording_rules %}
+  {% set _ = ns.zbx_items.update({
+    r_rule.record: {
+      "uuid": (date_time('%Y%m%dT%H%M%S.%fZ') | to_uuid4 | replace('-', '')),
+      "name": r_rule.record,
+      "key": (r_rule.record.split(":")[0]),
+      "preprocessing": [],
+      "master_preprocessing": [
+        {
+          "type": "JAVASCRIPT",
+          "parameters": [
+            (ns.promabbix.zabbix_master_item_preprocessing)
+          ]
+        }
+      ],
+      "query": ("query=" + (encodeURIPrometheusQuery(r_rule.expr, ns.prometheus.query_chars_encoding) | to_json(ensure_ascii=False))[1:-1]),
+      "query_orig": r_rule.expr,
+      "sub_keys": (r_rule.record.split(":")[1:]),
+      "discovery_key": (r_rule.record.split(":")[0] + "[" + r_rule.record.split(":")[1:] | join(',') + ",ldd]"),
+      "tags": [{ "tag": "Application", "value": "Metrics" }],
+      "item_prototype_tags": [
+        { "tag": "{#TAG0KEY}", "value": "{#TAG0VAL}" },
+        { "tag": "{#TAG1KEY}", "value": "{#TAG1VAL}" },
+        { "tag": "{#TAG2KEY}", "value": "{#TAG2VAL}" },
+        { "tag": "{#TAG3KEY}", "value": "{#TAG3VAL}" },
+        { "tag": "{#TAG4KEY}", "value": "{#TAG4VAL}" },
+        { "tag": "{#TAG5KEY}", "value": "{#TAG5VAL}" },
+        { "tag": "{#TAG6KEY}", "value": "{#TAG6VAL}" },
+        { "tag": "{#TAG7KEY}", "value": "{#TAG7VAL}" },
+        { "tag": "{#TAG8KEY}", "value": "{#TAG8VAL}" },
+        { "tag": "{#TAG9KEY}", "value": "{#TAG9VAL}" }
+      ],
+      "zbx_tags": ( ns.common_zbx_tag_dict | combine(
+          (r_rule.labels | default({}) | dict2items | selectattr("key", "match", "^__zbx_.*") | list | items2dict)
+        )
+      ),
+      "triggers": [],
+    }
+  }) %}
+  {% set _ = ns.zbx_items[r_rule.record].preprocessing.append(
+    {
+      "type": "JSONPATH",
+      "parameters": [
+        (ns.promabbix.zabbix_depend_item_preprocessing)
+      ],
+      "error_handler": "DISCARD_VALUE"
+    }
+  ) %}
+  {% set _ = ns.zbx_items[r_rule.record].preprocessing.append(
+    {
+      "type": "DISCARD_UNCHANGED_HEARTBEAT",
+      "parameters": [
+        ns.zbx_items[r_rule.record].zbx_tags.__zbx_item_value_heartbeat | default('2m')
+      ]
+    }
+  ) %}
+  {% for a_rule in alerting_rules if a_rule.alert == r_rule.record %}
+    {% set discovery_name = (serializeLabelsToZabbixMacros(
+      (a_rule.annotations.summary | default(r_rule.record) | string), ns.prometheus.labels_to_zabbix_macros
+    ) | to_json(ensure_ascii=False))[1:-1] %}
+    {% set alert_rule = {
+      "uuid": (date_time('%Y%m%dT%H%M%S.%fZ') | to_uuid4 | replace('-', '')),
+      "name": discovery_name,
+      "opdata": (serializeLabelsToZabbixMacros(a_rule.annotations.description, ns.prometheus.labels_to_zabbix_macros) | to_json(ensure_ascii=False))[1:-1],
+      "tags": {
+        "alert": (a_rule.alert | replace(':', '_'))
+      },
+      "zbx_tags": (
+        ns.zbx_items[r_rule.record].zbx_tags | combine(
+          a_rule.labels | default({}) | dict2items | selectattr("key", "match", "^__zbx_.*") | list | items2dict
+        )
+      )
+    } %}
+    {% if a_rule.for %}
+      {% set _ = alert_rule.tags.update({"__event_delay": a_rule.for}) %}
+    {% endif %}
+    {% set _ = alert_rule.update({ "tags": ( alert_rule.tags | combine(ns.common_tag_dict) | 
+      combine( a_rule.labels | default({}) | 
+        dict2items | selectattr("key", "match", "^(?!__zbx_.*)") | list | items2dict 
+      )
+    )}) %}
+    {% for tag, value in alert_rule.tags.items() %}
+      {% set _ = alert_rule.tags.update({tag: serializeLabelsToZabbixMacros(value, ns.prometheus.labels_to_zabbix_macros)}) %}
+    {% endfor %}
+    {% set zbx_item_prototype_key = (ns.zbx_items[r_rule.record].key + '[' + (ns.zbx_items[r_rule.record].sub_keys | join(',')) + ',{#ZBX.ITEM.SUBKEY}]') %}
+    {% set zbx_item_prototype_full_key = ("/" + ns.template_full_name + "/" + zbx_item_prototype_key) %}
+    {% set zbx_trigger_prototype_expression = (toZabbixExpression(
+      a_rule.alert, a_rule.expr, zbx_item_prototype_full_key, ns.prometheus.labels_to_zabbix_macros) | to_json(ensure_ascii=False))[1:-1] | trim %}
+    {% set render_data = {
+      "item_key": zbx_item_prototype_full_key,
+      "item_full_key": zbx_item_prototype_full_key,
+      "trigger_expression": zbx_trigger_prototype_expression,
+      "template_data": template_data,
+    } %}
+    {% if alert_rule.zbx_tags.__zbx_trigger_expression %}
+      {% set _ = alert_rule.update({ 
+        "expression": lookup_template(render_data, serializeLabelsToZabbixMacros(alert_rule.zbx_tags.__zbx_trigger_expression, ns.prometheus.labels_to_zabbix_macros))
+      }) %}
+    {% else %}
+      {% set _ = alert_rule.update({ "expression": zbx_trigger_prototype_expression }) %}
+    {% endif %}
+    {% if alert_rule.zbx_tags.__zbx_trigger_description %}
+      {% set _ = alert_rule.update({ 
+        "description": lookup_template(render_data, serializeLabelsToZabbixMacros(alert_rule.zbx_tags.__zbx_trigger_description, ns.prometheus.labels_to_zabbix_macros)) 
+      }) %}
+    {% endif %}
+    {% set _ = ns.zbx_items[r_rule.record].update({"discovery_name": discovery_name}) %}
+    {% set _ = ns.zbx_items[r_rule.record].update({"item_prototype_key": zbx_item_prototype_key}) %}
+    {% set _ = ns.zbx_items[r_rule.record].triggers.append(alert_rule) %}
+  {% endfor %}
+{% endfor %}
+{
+  "zabbix_export": {
+    "version": "6.0",
+    "date": "{{ date_time('%Y-%m-%dT%H:00:00Z') }}",
+    "groups": [
+      {
+        "uuid": "7df96b18c230490a9a0a9e2307226338",
+        "name": "Templates"
+      }
+    ],
+    "templates": [
+      {
+        "uuid": "{{ ns.template_full_name | to_uuid4 | replace('-', '') }}",
+        "template": "{{ template_prefix | default('templ_module_promt_kube') }}_{{ zabbix.template }}",
+        "name": "{{ zabbix.name }}",
+        "description": "K8S monitoring in Zabbix",
+        "groups": [
+          {
+            "name": "Templates"
+          }
+        ],
+        "items": [
+{% for k, r_rule in (ns.zbx_items | dictsort) if (r_rule.triggers | length) > 0 %}
+          {
+            "uuid": "{{ r_rule.uuid }}",
+            "name": "{{ r_rule.name }}",
+            "type": "HTTP_AGENT",
+            "key": "{{ r_rule.key }}[{{ r_rule.sub_keys | join(',') }}]",
+            "delay": "{{ r_rule.zbx_tags.__zbx_item_delay | default('30s') }}",
+            "history": "0",
+            "trends": "0",
+            "value_type": "TEXT",
+            "preprocessing": {{ r_rule.master_preprocessing | default([]) | to_json(indent=2, ensure_ascii=False) | indent(12, False, True) }},
+            "timeout": "{{ r_rule.zbx_tags.__zbx_item_timeout | default('30s') }}",
+            "url": "{{ r_rule.zbx_tags.__zbx_item_url | default(ns.prometheus.api.url)}}",
+            "posts": "{{ r_rule.query }}",
+            "request_method": "POST",
+            "tags": {{ r_rule.tags | default([]) | to_json(indent=2, ensure_ascii=False) | indent(12, False, True) }}
+          }{% if not loop.last %},
+          {% endif %}
+{% endfor -%}
+        ],
+        "discovery_rules": [
+{% for k, r_rule in (ns.zbx_items | dictsort) if (r_rule.triggers | length) > 0  %}
+          {
+            "uuid": "{{ (date_time('%Y%m%dT%H%M%S.%fZ') | to_uuid4 | replace('-', '')) }}",
+            "name": "{{ r_rule.discovery_key }}",
+            "type": "DEPENDENT",
+            "key": "{{ r_rule.discovery_key }}",
+            "delay": "0",
+  {% if zabbix.lld_filters is defined %}
+            "filter": {
+              "evaltype": "{{ zabbix.lld_filters.filter.evaltype }}",
+              "conditions": {{ zabbix.lld_filters.filter.conditions | default([]) | sort(attribute='macro') | to_json(indent=2, ensure_ascii=False) | indent(14, False, True)}}{% if zabbix.lld_filters.filter.evaltype == 'FORMULA' %},{% endif %}
+    {% if zabbix.lld_filters.filter.evaltype == 'FORMULA' %}
+              "formula": "{{ zabbix.lld_filters.filter.formula | default('') }}"
+    {% endif %}
+            },
+  {% endif %}
+            "lifetime": "{{ r_rule.zbx_tags.__zbx_item_lifetime | default('2h') }}",
+            "item_prototypes": [
+              {
+                "uuid": "{{ (date_time('%Y%m%dT%H%M%S.%fZ') | to_uuid4 | replace('-', '')) }}",
+                "name": "{{ r_rule.discovery_name }}",
+                "type": "DEPENDENT",
+                "key": "{{ r_rule.item_prototype_key }}",
+                "delay": "0",
+                "history": "{{ r_rule.zbx_tags.__zbx_history | default('1d') }}",
+                "trends": "{{ r_rule.zbx_tags.__zbx_trends | default('14d') }}",
+                "value_type": "FLOAT",
+                "preprocessing": {{ r_rule.preprocessing | default([]) | to_json(indent=2, ensure_ascii=False) | indent(12, False, True) }},
+                "master_item": {
+                  "key": "{{ r_rule.key }}[{{ r_rule.sub_keys | join(',') }}]"
+                },
+                "tags": {{ r_rule.item_prototype_tags | default([]) | to_json(indent=2, ensure_ascii=False) | indent(12, False, True) }},
+                "trigger_prototypes": [
+  {% for a_rule in r_rule.triggers %}
+                  {
+                    "uuid": "{{ (date_time('%Y%m%dT%H%M%S.%fZ') | to_uuid4 | replace('-', '')) }}",
+                    "expression": "{{ a_rule.expression }}",
+                    "name": "{{ a_rule.name }}",
+                    "opdata": "{{ a_rule.opdata }}",
+                    "priority": "{{ a_rule.zbx_tags.__zbx_priority | default('AVERAGE') }}",
+                    "description": "{{ a_rule.description }}",
+                    "manual_close": "YES",
+                    "tags": {{ a_rule.tags | default([]) | dict2items(key_name="tag", value_name="value") | sort(attribute="tag") | to_json(indent=2, ensure_ascii=False) | indent(20, False, True) }}
+                  }{% if not loop.last %},
+                  {% endif %}
+  {% endfor %}
+                ]{% if r_rule.zbx_tags.__zbx_item_units %},{% endif %}
+  {% if r_rule.zbx_tags.__zbx_item_units %}
+                "units": "{{ r_rule.zbx_tags.__zbx_item_units }}"
+  {% endif %}
+              }
+            ],
+            "master_item": {
+              "key": "{{ r_rule.key }}[{{ r_rule.sub_keys | join(',') }}]"
+            },
+            "preprocessing": [
+              {
+                "type": "JSONPATH",
+                "parameters": [
+                  "$.lld"
+                ],
+                "error_handler": "CUSTOM_VALUE",
+                "error_handler_params": "[]"
+              }
+            ],
+            "overrides": []
+          }{% if not loop.last %},
+          {% endif %}
+{% endfor -%}
+        ],
+        "tags": {{ zabbix.tags | default([]) | sort(attribute='tag') | to_json(indent=2, ensure_ascii=False) | indent(8, False, True)}},
+        "macros": {{ zabbix.macros | default([]) | sort(attribute='macro') | to_json(indent=2, ensure_ascii=False) | indent(8, False, True)}}
+      }
+    ]
+  }
+}
