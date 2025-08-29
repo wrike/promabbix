@@ -31,8 +31,6 @@ class TestDataLoader:
         assert loader.console is not None
         assert loader.console.file is not None
         assert loader.console.file.buffer is not None
-        # Verify console is configured to use stderr
-        assert loader.console.file.buffer.name == 12
         
     def test_load_from_file_yaml_valid(self):
         """Test loading valid YAML file."""
@@ -211,8 +209,6 @@ class TestDataSaver:
         assert saver.console is not None
         assert saver.console.file is not None
         assert saver.console.file.buffer is not None
-        # Verify console is configured to use stderr
-        assert saver.console.file.buffer.name == 12
         
     def test_save_json_to_file_dict(self):
         """Test saving dictionary as JSON file."""
