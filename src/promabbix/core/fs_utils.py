@@ -9,9 +9,9 @@ from rich.console import Console
 from typing import Any
 
 try:
-    from yaml import CLoader as Loader
+    from yaml import CLoader as Loader  # type: ignore[misc]
 except ImportError:
-    from yaml import Loader
+    from yaml import Loader  # type: ignore[misc]
 import json
 import sys
 import yaml
