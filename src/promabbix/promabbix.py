@@ -14,7 +14,7 @@ from pathlib import Path
 
 
 class PromabbixApp:
-    def __init__(self, loader = DataLoader(), saver = DataSaver(), parser = None):
+    def __init__(self, loader=DataLoader(), saver=DataSaver(), parser=None):
         self.loader = loader
         self.saver = saver
         self.parser = parser if parser else self.app_args()
@@ -30,7 +30,7 @@ class PromabbixApp:
 
         render = Render(searchpath=str(pargs['templates']))
         _zbx_template_data = render.do_template(template_data, str(pargs['template_name']))
-        
+
         # Handle output: if output is "-", write to STDOUT
         if _zbx_template_data != '':
             if pargs['output'] == '-':
@@ -55,7 +55,7 @@ class PromabbixApp:
             '-t',
             '--templates',
             action="store",
-            default=f'{os.path.abspath(os.path.dirname( __file__ ))}/templates/',
+            default=f'{os.path.abspath(os.path.dirname(__file__))}/templates/',
             type=str,
             help=('Path to dir with jinja2 templates')
         )
@@ -78,6 +78,7 @@ class PromabbixApp:
             help=('Template name')
         )
         return parser
+
 
 if __name__ == '__main__':
     PromabbixApp().main()

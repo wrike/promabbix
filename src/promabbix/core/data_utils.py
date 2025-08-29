@@ -17,6 +17,6 @@ def isjson(data):
             return True
         else:
             return False
-    except Exception as e:
+    except Exception:
         return False
     return True

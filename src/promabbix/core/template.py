@@ -5,13 +5,11 @@
 #
 
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Union
 from rich.console import Console
-from jinja2 import Environment, FileSystemLoader, Template, StrictUndefined
-from jinja2.exceptions import (TemplateSyntaxError, UndefinedError, TemplateRuntimeError, 
-                               TemplateError, TemplateAssertionError)
-import jinja2.filters
-import jinja2.tests
+from jinja2 import Environment, FileSystemLoader
+from jinja2.exceptions import (TemplateSyntaxError, UndefinedError, TemplateRuntimeError,
+                               TemplateAssertionError)
 
 from datetime import datetime
 import json
@@ -26,18 +24,21 @@ def date_time(format):
     now = datetime.fromtimestamp(epoch_ts)
     try:
         return now.strftime(format)
-    except:
+    except Exception:
         return 'unknown'
+
 
 def to_uuid4(val: str):
     hex_string = hashlib.md5(val.encode("UTF-8")).hexdigest()
     uuid4 = uuid.UUID(hex=hex_string, version=4)
     return str(uuid4)
 
+
 def get_jinja2_globals():
     return {
         'date_time': date_time,
     }
+
 
 def get_jinja2_filters():
     from core.data_utils import isjson
@@ -60,6 +61,7 @@ def get_jinja2_filters():
         'to_uuid': to_uuid,
         'to_uuid4': to_uuid4,
     }
+
 
 def get_jinja2_tests():
     from ansible.plugins.test.core import match

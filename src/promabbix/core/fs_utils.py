@@ -9,9 +9,9 @@ from rich.console import Console
 from typing import Any
 
 try:
-    from yaml import CLoader as Loader  # type: ignore[misc]
+    from yaml import CLoader as Loader  # type: ignore[assignment]
 except ImportError:
-    from yaml import Loader  # type: ignore[misc]
+    from yaml import Loader  # type: ignore[assignment]
 import json
 import sys
 import yaml
@@ -28,7 +28,7 @@ class DataLoader:
     def _parse_data(self, data):
         """
         Parse data as YAML or JSON.
-        
+
         :param data: Raw data string to parse
         :return: Parsed data object
         """
@@ -104,7 +104,7 @@ class DataSaver:
                     data_to_write = json.dumps(parsed, indent=2, ensure_ascii=False)
                 except Exception:
                     # Not valid JSON; treat as plain text
-                    self.console.print(f"Warning: String is not valid JSON, saving as plain text.", style="bold yellow")
+                    self.console.print("Warning: String is not valid JSON, saving as plain text.", style="bold yellow")
                     data_to_write = data
             else:
                 data_to_write = json.dumps(data, indent=2, ensure_ascii=False)
@@ -124,7 +124,7 @@ class DataSaver:
                         data_to_write = data
                     else:
                         data_to_write = yaml.dump(parsed_data, allow_unicode=True, sort_keys=False)
-                except Exception as e:
+                except Exception:
                     self.console.print("Warning: String is not valid YAML/JSON, saving as plain text.", style="bold yellow")
                     data_to_write = data  # not parseable, save as is
             else:
@@ -154,7 +154,7 @@ class DataSaver:
         elif isinstance(data, str):
             self.save_text_to_file(data, filename)
         else:
-            self.console.print(f"Unknown data type, attempting to save as string.", style="bold yellow")
+            self.console.print("Unknown data type, attempting to save as string.", style="bold yellow")
             self.save_text_to_file(str(data), filename)
 
     def save_to_stdout(self, data: Any) -> None:
@@ -170,7 +170,7 @@ class DataSaver:
                     # Try parsing as JSON first for pretty printing
                     parsed = json.loads(data)
                     output = json.dumps(parsed, indent=2, ensure_ascii=False)
-                except:
+                except Exception:
                     # Not JSON, output as-is
                     output = data
             elif isinstance(data, (dict, list)):
@@ -189,4 +189,3 @@ class DataSaver:
         except Exception as e:
             self.console.print(f"[bold red]Error writing to STDOUT:[/bold red] {e}")
             sys.exit(1)
-
