@@ -7,4 +7,4 @@
 .coverage
 .DS*
 .env
-.claude.md
+CLAUDE.local.md
