@@ -69,6 +69,21 @@ pip install -r requirements-dev.txt
 python3 src/promabbix/promabbix.py examples/minikube-alert-config.yaml -o output.json
 ```
 
+### Code Quality (CI Commands)
+```bash
+# Run complete CI quality check locally
+source .venv/bin/activate
+
+# Run tests with coverage (80% minimum required)
+python -m pytest tests/ -v --cov-fail-under=80 --cov=src/promabbix --cov-report=term-missing --cov-report=xml
+
+# Run flake8 linting
+flake8 src/ --count --max-complexity=10 --max-line-length=127 --statistics
+
+# Run type checking with mypy
+mypy src/ --ignore-missing-imports
+```
+
 ## Testing Architecture
 
 The test suite uses pytest with comprehensive mocking strategy:
