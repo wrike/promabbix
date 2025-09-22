@@ -33,6 +33,15 @@ COPY src/ .
 ############################
 FROM python:3.12-slim AS runtime
 
+# OCI Labels for container metadata
+LABEL org.opencontainers.image.title="Promabbix"
+LABEL org.opencontainers.image.description="Tool for connecting Prometheus to Zabbix monitoring"
+LABEL org.opencontainers.image.vendor="Wrike"
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.url="https://github.com/wrike/promabbix"
+LABEL org.opencontainers.image.source="https://github.com/wrike/promabbix"
+LABEL org.opencontainers.image.documentation="https://github.com/wrike/promabbix#readme"
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     # Make our venv the default Python
