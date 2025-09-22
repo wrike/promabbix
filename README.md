@@ -1,5 +1,7 @@
 # Promabbix
 
+![Promabbix Logo](logo.png)
+
 Connecting Prometheus to Zabbix.
 
 ## TL;DR
