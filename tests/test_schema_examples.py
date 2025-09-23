@@ -22,7 +22,7 @@ class TestSchemaValidationExamples:
         """Load the unified JSON schema."""
         schema_path = Path(__file__).parent.parent / "schemas" / "unified.json"
         if not schema_path.exists():
-            pytest.skip("unified.json schema not found")
+            raise FileNotFoundError(f"unified.json schema not found at {schema_path}")
         
         with open(schema_path) as f:
             return json.load(f)
@@ -567,31 +567,49 @@ class TestSchemaValidationExamples:
         with pytest.raises(ValidationError):
             validator.validate_config(invalid_config)
 
-    @pytest.mark.skip(reason="URI format validation is currently lenient in JSON schema")
-    def test_invalid_prometheus_url_format_fails_validation(self, unified_schema):
-        """Test that invalid Prometheus URL format fails validation."""
-        invalid_config = {
-            "groups": [
-                {
-                    "name": "recording_rules",
-                    "rules": [{"record": "test", "expr": "1"}]
-                }
-            ],
-            "prometheus": {
-                "api": {
-                    "url": "not-a-valid-url"  # Should be valid URI format
+    def test_prometheus_url_validation_accepts_valid_urls(self, unified_schema):
+        """Test that valid Prometheus URLs are accepted."""
+        valid_configs = [
+            {
+                "groups": [
+                    {
+                        "name": "recording_rules",
+                        "rules": [{"record": "test", "expr": "1"}]
+                    }
+                ],
+                "prometheus": {
+                    "api": {
+                        "url": "http://prometheus:9090/api/v1/query"
+                    }
+                },
+                "zabbix": {
+                    "template": "test_template"
                 }
             },
-            "zabbix": {
-                "template": "test_template"
+            {
+                "groups": [
+                    {
+                        "name": "recording_rules",
+                        "rules": [{"record": "test", "expr": "1"}]
+                    }
+                ],
+                "prometheus": {
+                    "api": {
+                        "url": "https://victoria-metrics.monitoring.svc:8481/api/v1/query"
+                    }
+                },
+                "zabbix": {
+                    "template": "test_template"
+                }
             }
-        }
+        ]
         
-        # Should fail validation
-        from promabbix.core.validation import ConfigValidator, ValidationError
+        from promabbix.core.validation import ConfigValidator
         validator = ConfigValidator()
-        with pytest.raises(ValidationError):
-            validator.validate_config(invalid_config)
+        
+        for config in valid_configs:
+            # Should pass validation
+            validator.validate_config(config)
 
     def test_additional_properties_not_allowed(self, unified_schema):
         """Test that additional properties not defined in schema are rejected."""

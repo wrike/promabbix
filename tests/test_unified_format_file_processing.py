@@ -380,18 +380,13 @@ return JSON.stringify(result);"""
 
     def test_promabbix_app_with_unified_file_validation_only(self, sample_unified_file):
         """Test Promabbix app with validation-only mode on unified file."""
-        with pytest.raises(NotImplementedError):
-            # Should fail until we implement validation-only mode
-            app = PromabbixApp()
-            # Simulate command line args for validation-only
-            args = type('Args', (), {
-                'alertrules': str(sample_unified_file),
-                'validate_only': True,
-                'templates': '/tmp',
-                'output': '/tmp/output.json',
-                'template_name': 'test.j2'
-            })()
-            # This should validate without generating templates
+        from unittest.mock import patch
+        
+        app = PromabbixApp()
+        # Test validation-only mode
+        with patch('sys.argv', ['promabbix', str(sample_unified_file), '--validate-only']):
+            result = app.main()
+            assert result == 0  # Should validate successfully
 
     def test_promabbix_app_with_unified_file_template_generation(self, sample_unified_file):
         """Test Promabbix app generating templates from unified file."""
@@ -409,10 +404,10 @@ return JSON.stringify(result);"""
         loader = DataLoader()
         config = loader.load_from_file(str(malformed_unified_file))
         
-        with pytest.raises(NotImplementedError):
-            # Should eventually provide detailed validation errors
-            from promabbix.core.validation import ConfigValidator
-            validator = ConfigValidator()
+        # Should provide detailed validation errors
+        from promabbix.core.validation import ConfigValidator, ValidationError
+        validator = ConfigValidator()
+        with pytest.raises(ValidationError):
             validator.validate_config(config)
 
     def test_stdin_unified_format_processing(self, sample_unified_file):
@@ -435,10 +430,14 @@ return JSON.stringify(result);"""
 
     def test_stdout_template_generation(self, sample_unified_file):
         """Test generating Zabbix template to STDOUT from unified file."""
-        with pytest.raises(NotImplementedError):
-            # Should fail until we implement unified format template generation
-            app = PromabbixApp()
-            # Simulate processing unified file and outputting to stdout
+        from unittest.mock import patch
+        
+        app = PromabbixApp()
+        # Mock template rendering to avoid needing actual template files
+        with patch('promabbix.core.template.Render.do_template', return_value={"mock": "template"}):
+            with patch('sys.argv', ['promabbix', str(sample_unified_file), '-o', '-']):
+                result = app.main()
+                assert result == 0  # Should output template to stdout
 
     def test_file_format_detection_yaml_vs_json(self, temp_directory):
         """Test that DataLoader can handle both YAML and JSON unified formats."""
@@ -533,15 +532,52 @@ return JSON.stringify(result);"""
         assert len(config["groups"][1]["rules"]) == 100
         assert len(config["zabbix"]["hosts"]) == 50
         
-        with pytest.raises(NotImplementedError):
-            # Should eventually test validation performance
-            from promabbix.core.validation import ConfigValidator
-            validator = ConfigValidator()
-            validator.validate_config(config)
+        # Test validation performance
+        from promabbix.core.validation import ConfigValidator
+        validator = ConfigValidator()
+        validator.validate_config(config)  # Should handle large configs
 
 
 class TestBackwardsCompatibility:
     """Test backwards compatibility with existing three-file format."""
+
+    @pytest.fixture
+    def sample_unified_file(self, temp_directory):
+        """Create a sample unified config file for testing."""
+        import yaml
+        config = {
+            "groups": [
+                {
+                    "name": "recording_rules",
+                    "rules": [
+                        {
+                            "record": "test_metric",
+                            "expr": "sum(test_metric_total) by (label)"
+                        }
+                    ]
+                },
+                {
+                    "name": "alerting_rules",
+                    "rules": [
+                        {
+                            "alert": "test_metric",
+                            "expr": "test_metric > 100",
+                            "annotations": {
+                                "summary": "Test metric too high"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "zabbix": {
+                "template": "test_service_template",
+                "name": "Test Service Template"
+            }
+        }
+        
+        config_file = temp_directory / "unified-config.yaml"
+        config_file.write_text(yaml.dump(config, default_flow_style=False))
+        return config_file
 
     @pytest.fixture
     def legacy_three_file_structure(self, temp_directory):
@@ -629,30 +665,37 @@ class TestBackwardsCompatibility:
 
     def test_migrate_legacy_to_unified_format(self, legacy_three_file_structure):
         """Test migration from legacy three-file format to unified format."""
-        with pytest.raises(NotImplementedError):
-            # Should fail until we implement migration functionality
-            from promabbix.core.migration import migrate_legacy_service
-            unified_config = migrate_legacy_service(str(legacy_three_file_structure))
-            
-            assert "groups" in unified_config
-            assert "zabbix" in unified_config  
-            assert "wiki" in unified_config
+        from promabbix.core.migration import migrate_legacy_service
+        
+        unified_config = migrate_legacy_service(str(legacy_three_file_structure))
+        
+        assert "groups" in unified_config
+        assert "zabbix" in unified_config  
+        assert "wiki" in unified_config
+        
+        # Verify structure is correct
+        assert len(unified_config["groups"]) == 2
+        assert unified_config["groups"][0]["name"] == "recording_rules"
+        assert unified_config["groups"][1]["name"] == "alerting_rules"
+        assert unified_config["zabbix"]["template"] == "test_service_template"
 
     def test_detect_legacy_vs_unified_format(self, legacy_three_file_structure, sample_unified_file):
         """Test detection of legacy vs unified format."""
-        with pytest.raises(NotImplementedError):
-            # Should fail until we implement format detection
-            from promabbix.core.migration import detect_config_format
-            
-            legacy_format = detect_config_format(str(legacy_three_file_structure))
-            unified_format = detect_config_format(str(sample_unified_file))
-            
-            assert legacy_format == "legacy_three_file"
-            assert unified_format == "unified"
+        from promabbix.core.migration import detect_config_format
+        
+        legacy_format = detect_config_format(str(legacy_three_file_structure))
+        unified_format = detect_config_format(str(sample_unified_file))
+        
+        assert legacy_format == "legacy_three_file"
+        assert unified_format == "unified"
 
     def test_builder_script_fallback_support(self, legacy_three_file_structure):
         """Test that builder scripts can fall back to legacy processing."""
-        with pytest.raises(NotImplementedError):
-            # Should fail until we implement builder script integration
-            # This would test the bash script logic for detecting format
-            pass
+        from promabbix.core.migration import detect_builder_script_format
+        
+        # Test builder script format detection
+        format_result = detect_builder_script_format(str(legacy_three_file_structure))
+        assert format_result == "legacy"
+        
+        # Test that the function returns simple strings for shell script use
+        assert format_result in ["legacy", "unified", None]
