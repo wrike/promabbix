@@ -20,7 +20,7 @@ import uuid
 import hashlib
 
 
-def date_time(format):
+def date_time(format: str) -> str:
     epoch_ts = time.time()
     now = datetime.fromtimestamp(epoch_ts)
     try:
@@ -29,19 +29,19 @@ def date_time(format):
         return 'unknown'
 
 
-def to_uuid4(val: str):
+def to_uuid4(val: str) -> str:
     hex_string = hashlib.md5(val.encode("UTF-8")).hexdigest()
     uuid4 = uuid.UUID(hex=hex_string, version=4)
     return str(uuid4)
 
 
-def get_jinja2_globals():
+def get_jinja2_globals() -> Dict[str, Any]:
     return {
         'date_time': date_time,
     }
 
 
-def get_jinja2_filters():
+def get_jinja2_filters() -> Dict[str, Any]:
     from .data_utils import isjson
     from ansible.plugins.filter.core import (
         combine, regex_findall, regex_replace, regex_search, to_json, to_uuid,
@@ -64,7 +64,7 @@ def get_jinja2_filters():
     }
 
 
-def get_jinja2_tests():
+def get_jinja2_tests() -> Dict[str, Any]:
     from ansible.plugins.test.core import match
     from ansible.plugins.filter.core import (
         regex_replace, regex_search, regex_findall
@@ -78,7 +78,7 @@ def get_jinja2_tests():
 
 
 class Render:
-    def __init__(self, searchpath: Union[str, Path, None] = None):
+    def __init__(self, searchpath: Union[str, Path, None] = None) -> None:
         self.console = Console(stderr=True)
         self.searchpath = Path(searchpath).expanduser().resolve() if searchpath else None
 
@@ -162,7 +162,7 @@ class Render:
         # Set the search path and render the template
         original_searchpath = self.searchpath
         try:
-            self.searchpath = str(template_path) if template_path else None
+            self.searchpath = Path(template_path) if template_path else None
             # Update the Jinja environment with new searchpath
             if self.searchpath:
                 self.jinja_env = jinja2.Environment(

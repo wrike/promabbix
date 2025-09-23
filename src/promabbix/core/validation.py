@@ -6,7 +6,7 @@
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, cast
 from rich.console import Console
 
 
@@ -63,7 +63,7 @@ class ConfigValidator:
         """Load JSON schema from file."""
         try:
             with open(self.schema_path, 'r') as f:
-                return json.load(f)
+                return cast(Dict[str, Any], json.load(f))
         except FileNotFoundError:
             raise ValidationError(
                 f"Schema file not found: {self.schema_path}",
@@ -131,7 +131,7 @@ class ConfigValidator:
             ValidationError: If cross-reference validation fails
         """
         cross_ref_validator = CrossReferenceValidator()
-        errors = []
+        errors: List[ValidationError] = []
 
         # Validate alert-wiki consistency
         errors.extend(cross_ref_validator.validate_alert_wiki_consistency(config_data))
@@ -189,7 +189,7 @@ class SchemaValidator:
         """
         import jsonschema
 
-        errors = []
+        errors: List[ValidationError] = []
         try:
             jsonschema.validate(data, self.schema)
         except jsonschema.ValidationError as e:
@@ -271,7 +271,7 @@ class SchemaValidator:
 class CrossReferenceValidator:
     """Validator for cross-references between configuration sections."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize cross-reference validator."""
         pass
 
@@ -285,7 +285,7 @@ class CrossReferenceValidator:
         Returns:
             List of validation errors for missing documentation
         """
-        errors = []
+        errors: List[ValidationError] = []
 
         # Only validate if both sections exist
         if not self.should_validate_wiki_consistency(config):

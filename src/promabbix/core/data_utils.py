@@ -5,9 +5,10 @@
 #
 
 import json
+from typing import Any
 
 
-def isjson(data):
+def isjson(data: Any) -> bool:
     """ Check if the data is a json
     """
     try:

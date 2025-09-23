@@ -7,6 +7,7 @@
 import argparse
 import os
 import sys
+from typing import Any, Dict, Optional, cast
 
 from .core.fs_utils import DataLoader, DataSaver
 from .core.template import Render
@@ -16,9 +17,10 @@ from rich.console import Console
 
 
 class PromabbixApp:
-    def __init__(self, loader=DataLoader(), saver=DataSaver(), parser=None, validator=None):
-        self.loader = loader
-        self.saver = saver
+    def __init__(self, loader: Optional[DataLoader] = None, saver: Optional[DataSaver] = None,
+                 parser: Optional[argparse.ArgumentParser] = None, validator: Optional[ConfigValidator] = None) -> None:
+        self.loader = loader or DataLoader()
+        self.saver = saver or DataSaver()
         self.parser = parser if parser else self.app_args()
         self.validator = validator or ConfigValidator()
         self.console = Console(stderr=True)
@@ -131,7 +133,7 @@ class PromabbixApp:
             self.print_validation_error(e)
             return 1
 
-    def load_configuration(self, alertrules_path: str) -> dict:
+    def load_configuration(self, alertrules_path: str) -> Dict[str, Any]:
         """
         Load configuration from file or STDIN.
 
@@ -142,9 +144,9 @@ class PromabbixApp:
             Loaded configuration dictionary
         """
         if alertrules_path == "-":
-            return self.loader.load_from_stdin()
+            return cast(Dict[str, Any], self.loader.load_from_stdin())
         else:
-            return self.loader.load_from_file(alertrules_path)
+            return cast(Dict[str, Any], self.loader.load_from_file(alertrules_path))
 
     def save_template(self, template_data: str, output_path: str) -> None:
         """
@@ -173,7 +175,7 @@ class PromabbixApp:
         self.console.print("[red]✗ Configuration validation failed:[/red]")
         self.console.print(f"[red]{error}[/red]")
 
-    def app_args(self):
+    def app_args(self) -> argparse.ArgumentParser:
         """Configure command line argument parser."""
         parser = argparse.ArgumentParser(description='Promabbix', formatter_class=RichHelpFormatter)
 
@@ -220,7 +222,7 @@ class PromabbixApp:
         return parser
 
 
-def main():
+def main() -> None:
     """Entry point for the promabbix console script."""
     app = PromabbixApp()
     exit_code = app.main()

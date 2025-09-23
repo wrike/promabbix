@@ -7,14 +7,17 @@
 from pathlib import Path
 from rich.console import Console
 from typing import Any
-
-try:
-    from yaml import CLoader as Loader  # type: ignore[assignment]
-except ImportError:
-    from yaml import Loader  # type: ignore[assignment]
 import json
 import sys
 import yaml
+
+try:
+    from yaml import CLoader as YamlLoader
+except ImportError:
+    from yaml import Loader as YamlLoader  # type: ignore[assignment]
+
+# Create an alias for the loader to be used in yaml.load() calls
+Loader = YamlLoader
 
 
 class DataLoader:
@@ -22,10 +25,10 @@ class DataLoader:
     Class DataLoader to serialize JSON/YAML file.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.console = Console(stderr=True)
 
-    def _parse_data(self, data):
+    def _parse_data(self, data: str) -> Any:
         """
         Parse data as YAML or JSON.
 
@@ -92,7 +95,7 @@ class DataSaver:
 
     :param filename: Path to file.
     """
-    def __init__(self):
+    def __init__(self) -> None:
         self.console = Console(stderr=True)
 
     def save_to_file(self, data: Any, filename: str) -> None:

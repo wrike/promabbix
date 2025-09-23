@@ -15,7 +15,7 @@ This module provides functionality to:
 
 import yaml
 from pathlib import Path
-from typing import Dict, Any, Union, Optional
+from typing import Dict, Any, Union, Optional, cast
 
 
 def detect_config_format(config_path: Union[str, Path]) -> str:
@@ -122,7 +122,7 @@ def _load_alerts_section(alerts_file: Path) -> Dict[str, Any]:
         alerts_data = yaml.safe_load(f)
         if not (alerts_data and 'groups' in alerts_data):
             raise ValueError(f"Invalid alerts file format in {alerts_file}")
-        return alerts_data['groups']
+        return cast(Dict[str, Any], alerts_data['groups'])
 
 
 def _load_zabbix_section(zabbix_file: Path) -> Dict[str, Any]:
@@ -134,7 +134,7 @@ def _load_zabbix_section(zabbix_file: Path) -> Dict[str, Any]:
         zabbix_data = yaml.safe_load(f)
         if not (zabbix_data and 'zabbix' in zabbix_data):
             raise ValueError(f"Invalid zabbix file format in {zabbix_file}")
-        return zabbix_data['zabbix']
+        return cast(Dict[str, Any], zabbix_data['zabbix'])
 
 
 def _load_wiki_section(wiki_file: Path) -> Optional[Dict[str, Any]]:
@@ -146,7 +146,7 @@ def _load_wiki_section(wiki_file: Path) -> Optional[Dict[str, Any]]:
         with open(wiki_file, 'r') as f:
             wiki_data = yaml.safe_load(f)
             if wiki_data and 'wiki' in wiki_data:
-                return wiki_data['wiki']
+                return cast(Dict[str, Any], wiki_data['wiki'])
     except Exception:
         # Wiki is optional, so we can ignore parsing errors
         pass
