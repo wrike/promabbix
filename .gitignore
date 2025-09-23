@@ -58,6 +58,9 @@ coverage.xml
 # Local development
 CLAUDE.local.md
 
+# Versioning
+src/promabbix/_version.py
+
 # Temporary files
 *.tmp
 *.temp
