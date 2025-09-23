@@ -102,7 +102,7 @@ class DataSaver:
         """
         file_path = Path(filename).expanduser().resolve()
         ext = file_path.suffix.lower()
-        
+
         try:
             if ext == '.json':
                 # JSON format
@@ -112,7 +112,8 @@ class DataSaver:
                         data_to_write = json.dumps(parsed, indent=2, ensure_ascii=False)
                     except Exception:
                         # Not valid JSON; treat as plain text
-                        self.console.print("Warning: String is not valid data format, saving as plain text.", style="bold yellow")
+                        self.console.print("Warning: String is not valid data format, saving as plain text.",
+                                           style="bold yellow")
                         data_to_write = data
                 else:
                     data_to_write = json.dumps(data, indent=2, ensure_ascii=False)
@@ -127,7 +128,8 @@ class DataSaver:
                         else:
                             data_to_write = yaml.dump(parsed_data, allow_unicode=True, sort_keys=False)
                     except Exception:
-                        self.console.print("Warning: String is not valid data format, saving as plain text.", style="bold yellow")
+                        self.console.print("Warning: String is not valid data format, saving as plain text.",
+                                           style="bold yellow")
                         data_to_write = data  # not parseable, save as is
                 else:
                     data_to_write = yaml.dump(data, allow_unicode=True, sort_keys=False)
@@ -140,12 +142,11 @@ class DataSaver:
                     data_to_write = json.dumps(data, indent=2, ensure_ascii=False)
                 else:
                     data_to_write = str(data)
-            
+
             file_path.write_text(data_to_write, encoding='utf-8')
             self.console.print(f"Data saved to {file_path}.", style="green")
         except Exception as e:
             self.console.print(f"[bold red]Error saving file:[/bold red] {e}")
-
 
     def save_text_to_file(self, data: str, filename: str) -> None:
         file_path = Path(filename).expanduser().resolve()

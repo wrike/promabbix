@@ -146,16 +146,16 @@ class Render:
             if 0 < e.lineno <= len(lines):
                 self.console.print(lines[e.lineno-1])
             return False
-    
+
     def render_file(self, template_path: Union[str, Path], template_name: str, data: Dict[str, Any]) -> str:
         """
         Render a template file with the given data.
-        
+
         Args:
             template_path: Path to template directory
             template_name: Name of template file
             data: Data to render template with
-            
+
         Returns:
             Rendered template content
         """
@@ -177,7 +177,7 @@ class Render:
                 for k, v in get_jinja2_tests().items():
                     self.jinja_env.tests[k] = v
                 self.jinja_env.globals['lookup_template'] = self.do_template
-            
+
             return self.render(template_name, data)
         finally:
             self.searchpath = original_searchpath
