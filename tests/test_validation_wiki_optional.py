@@ -59,10 +59,9 @@ class TestWikiSectionOptional:
             # No wiki section - should be valid
         }
         
-        with pytest.raises(NotImplementedError):
-            # Should pass validation when implemented
-            validator = ConfigValidator()
-            validator.validate_config(config_without_wiki)
+        # Should pass validation
+        validator = ConfigValidator()
+        validator.validate_config(config_without_wiki)  # Should not raise exception
 
     def test_config_valid_with_wiki_section(self):
         """Test that configuration with wiki section also passes validation."""
@@ -95,7 +94,7 @@ class TestWikiSectionOptional:
             },
             "wiki": {
                 "templates": {
-                    "alert_config": {
+                    "wrike_alert_config": {
                         "templates": [
                             {
                                 "name": "test-service",
@@ -117,10 +116,9 @@ class TestWikiSectionOptional:
             }
         }
         
-        with pytest.raises(NotImplementedError):
-            # Should pass validation when implemented
-            validator = ConfigValidator()
-            validator.validate_config(config_with_wiki)
+        # Should pass validation
+        validator = ConfigValidator()
+        validator.validate_config(config_with_wiki)  # Should not raise exception
 
     def test_cross_reference_validation_only_when_both_present(self):
         """Test that cross-reference validation only runs when both alerts and wiki are present."""
@@ -144,10 +142,9 @@ class TestWikiSectionOptional:
             # No wiki section - cross-reference validation should be skipped
         }
         
-        with pytest.raises(NotImplementedError):
-            # Should pass validation when implemented (no cross-reference check)
-            validator = ConfigValidator()
-            validator.validate_config(config_alerts_no_wiki)
+        # Should pass validation (no cross-reference check)
+        validator = ConfigValidator()
+        validator.validate_config(config_alerts_no_wiki)  # Should not raise exception
 
     def test_cross_reference_validation_when_both_present(self):
         """Test that cross-reference validation runs when both alerts and wiki are present."""
@@ -188,9 +185,9 @@ class TestWikiSectionOptional:
             }
         }
         
-        with pytest.raises(NotImplementedError):
-            # Should fail validation when implemented (missing cross-reference)
-            validator = ConfigValidator()
+        # Should fail validation (missing cross-reference)
+        validator = ConfigValidator()
+        with pytest.raises(ValidationError):
             validator.validate_config(config_missing_docs)
 
     def test_empty_wiki_section_allowed(self):
@@ -213,10 +210,9 @@ class TestWikiSectionOptional:
             "wiki": {}  # Empty wiki section should be allowed
         }
         
-        with pytest.raises(NotImplementedError):
-            # Should pass validation when implemented
-            validator = ConfigValidator()
-            validator.validate_config(config_empty_wiki)
+        # Should pass validation
+        validator = ConfigValidator()
+        validator.validate_config(config_empty_wiki)  # Should not raise exception
 
     def test_wiki_with_templates_only(self):
         """Test that wiki section with only templates (no knowledgebase) is valid."""
@@ -238,7 +234,7 @@ class TestWikiSectionOptional:
             },
             "wiki": {
                 "templates": {
-                    "alert_config": {
+                    "wrike_alert_config": {
                         "templates": [
                             {
                                 "name": "test-service",
@@ -251,10 +247,9 @@ class TestWikiSectionOptional:
             }
         }
         
-        with pytest.raises(NotImplementedError):
-            # Should pass validation when implemented (no cross-reference check)
-            validator = ConfigValidator()
-            validator.validate_config(config_templates_only)
+        # Should pass validation (no cross-reference check)
+        validator = ConfigValidator()
+        validator.validate_config(config_templates_only)  # Should not raise exception
 
     def test_wiki_with_knowledgebase_only(self):
         """Test that wiki section with only knowledgebase (no templates) is valid."""
@@ -289,10 +284,9 @@ class TestWikiSectionOptional:
             }
         }
         
-        with pytest.raises(NotImplementedError):
-            # Should pass validation when implemented (cross-reference check passes)
-            validator = ConfigValidator()
-            validator.validate_config(config_knowledgebase_only)
+        # Should pass validation (cross-reference check passes)
+        validator = ConfigValidator()
+        validator.validate_config(config_knowledgebase_only)  # Should not raise exception
 
     def test_minimal_config_without_optional_sections(self):
         """Test minimal configuration with only required sections."""
@@ -314,10 +308,9 @@ class TestWikiSectionOptional:
             # No prometheus, promabbix, or wiki sections - should be valid
         }
         
-        with pytest.raises(NotImplementedError):
-            # Should pass validation when implemented
-            validator = ConfigValidator()
-            validator.validate_config(minimal_config)
+        # Should pass validation
+        validator = ConfigValidator()
+        validator.validate_config(minimal_config)  # Should not raise exception
 
     def test_cross_reference_validation_with_partial_wiki(self):
         """Test cross-reference validation when wiki has some but not all alert documentation."""
@@ -366,9 +359,9 @@ class TestWikiSectionOptional:
             }
         }
         
-        with pytest.raises(NotImplementedError):
-            # Should fail validation when implemented (alert_two missing docs)
-            validator = ConfigValidator()
+        # Should fail validation (alert_two missing docs)
+        validator = ConfigValidator()
+        with pytest.raises(ValidationError):
             validator.validate_config(config_partial_docs)
 
     def test_extra_wiki_documentation_allowed(self):
@@ -411,7 +404,6 @@ class TestWikiSectionOptional:
             }
         }
         
-        with pytest.raises(NotImplementedError):
-            # Should pass validation when implemented (extra docs are OK)
-            validator = ConfigValidator()
-            validator.validate_config(config_extra_docs)
+        # Should pass validation (extra docs are OK)
+        validator = ConfigValidator()
+        validator.validate_config(config_extra_docs)  # Should not raise exception

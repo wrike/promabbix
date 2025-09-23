@@ -222,38 +222,44 @@ class TestConfigurationsWithoutWiki:
         loader = DataLoader()
         config = loader.load_from_file(str(sysops_config_no_wiki))
         
-        with pytest.raises(NotImplementedError):
-            # Should pass validation when implemented (wiki is optional)
-            from promabbix.core.validation import ConfigValidator
-            validator = ConfigValidator()
-            validator.validate_config(config)
+        # Should pass validation (wiki is optional)
+        from promabbix.core.validation import ConfigValidator
+        validator = ConfigValidator()
+        validator.validate_config(config)  # Should not raise exception
 
     def test_no_cross_reference_validation_without_wiki(self, wrike_config_no_wiki):
         """Test that cross-reference validation is skipped when wiki section is absent."""
         loader = DataLoader()
         config = loader.load_from_file(str(wrike_config_no_wiki))
         
-        with pytest.raises(NotImplementedError):
-            # Should pass validation when implemented (no cross-reference check)
-            from promabbix.core.validation import ConfigValidator
-            validator = ConfigValidator()
-            validator.validate_config(config)
+        # Should pass validation (no cross-reference check)
+        from promabbix.core.validation import ConfigValidator
+        validator = ConfigValidator()
+        validator.validate_config(config)  # Should not raise exception
 
     def test_template_generation_without_wiki(self, sysops_config_no_wiki):
         """Test that template generation works without wiki section."""
-        with pytest.raises(NotImplementedError):
-            # Should work when implemented (wiki is optional for template generation)
-            from promabbix.promabbix import PromabbixApp
-            app = PromabbixApp()
-            # Template generation should work without wiki section
+        from promabbix.promabbix import PromabbixApp
+        from unittest.mock import patch
+        
+        app = PromabbixApp()
+        # Mock template rendering to avoid needing actual template files
+        with patch('promabbix.core.template.Render.do_template', return_value={"mock": "template"}):
+            with patch('sys.argv', ['promabbix', str(sysops_config_no_wiki)]):
+                result = app.main()
+                assert result == 0  # Should succeed
 
     def test_promabbix_app_minimal_config(self, really_minimal_config):
         """Test Promabbix app with absolutely minimal configuration."""
-        with pytest.raises(NotImplementedError):
-            # Should work when implemented
-            from promabbix.promabbix import PromabbixApp
-            app = PromabbixApp()
-            # Should handle minimal config correctly
+        from promabbix.promabbix import PromabbixApp
+        from unittest.mock import patch
+        
+        app = PromabbixApp()
+        # Mock template rendering to avoid needing actual template files
+        with patch('promabbix.core.template.Render.do_template', return_value={"mock": "template"}):
+            with patch('sys.argv', ['promabbix', str(really_minimal_config)]):
+                result = app.main()
+                assert result == 0  # Should handle minimal config correctly
 
     def test_mixed_configs_some_with_some_without_wiki(self, temp_directory):
         """Test handling multiple configurations where some have wiki and some don't."""
@@ -299,9 +305,8 @@ class TestConfigurationsWithoutWiki:
         assert "wiki" in wiki_config
         assert "wiki" not in no_wiki_config
         
-        with pytest.raises(NotImplementedError):
-            # Both should validate successfully when implemented
-            from promabbix.core.validation import ConfigValidator
-            validator = ConfigValidator()
-            validator.validate_config(wiki_config)  # Should validate cross-references
-            validator.validate_config(no_wiki_config)  # Should skip cross-reference validation
+        # Both should validate successfully
+        from promabbix.core.validation import ConfigValidator
+        validator = ConfigValidator()
+        validator.validate_config(wiki_config)  # Should validate cross-references
+        validator.validate_config(no_wiki_config)  # Should skip cross-reference validation

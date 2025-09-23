@@ -394,11 +394,15 @@ return JSON.stringify(result);"""
             # This should validate without generating templates
 
     def test_promabbix_app_with_unified_file_template_generation(self, sample_unified_file):
-        """Test Promabbix app generating templates from unified file.""" 
-        with pytest.raises(NotImplementedError):
-            # Should fail until we implement unified format support
-            app = PromabbixApp()
-            # This should generate Zabbix template from unified config
+        """Test Promabbix app generating templates from unified file."""
+        from unittest.mock import patch
+        
+        app = PromabbixApp()
+        # Mock template rendering to avoid needing actual template files
+        with patch('promabbix.core.template.Render.do_template', return_value={"mock": "template"}):
+            with patch('sys.argv', ['promabbix', str(sample_unified_file)]):
+                result = app.main()
+                assert result == 0  # Should generate template successfully
 
     def test_malformed_unified_file_validation_errors(self, malformed_unified_file):
         """Test validation errors with malformed unified config file."""

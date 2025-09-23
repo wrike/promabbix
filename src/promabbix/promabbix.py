@@ -222,7 +222,12 @@ class PromabbixApp:
         return parser
 
 
-if __name__ == '__main__':
+def main():
+    """Entry point for the promabbix console script."""
     app = PromabbixApp()
     exit_code = app.main()
     sys.exit(exit_code)
+
+
+if __name__ == '__main__':
+    main()

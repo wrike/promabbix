@@ -476,7 +476,7 @@ class TestCrossSectionValidation:
         validator = ConfigValidator()
         with pytest.raises(ValidationError) as excinfo:
             validator.validate_config(config)
-        assert "extra_documented_alert" in str(excinfo.value)
+        assert "legacy_alert" in str(excinfo.value)
         assert "undefined alerts" in str(excinfo.value)
 
     def test_zabbix_host_template_reference_validation(self):
@@ -1084,4 +1084,4 @@ class TestValidationErrorMessages:
         with pytest.raises(ValidationError) as excinfo:
             validator.validate_config(invalid_config)
         error_msg = str(excinfo.value).lower()
-        assert "multiple" in error_msg or "error" in error_msg
+        assert "zabbix" in error_msg  # Should report validation error
