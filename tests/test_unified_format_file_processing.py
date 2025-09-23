@@ -394,7 +394,7 @@ return JSON.stringify(result);"""
         
         app = PromabbixApp()
         # Mock template rendering to avoid needing actual template files
-        with patch('promabbix.core.template.Render.do_template', return_value={"mock": "template"}):
+        with patch('promabbix.core.template.Render.render_file', return_value='{"mock": "template"}'):
             with patch('sys.argv', ['promabbix', str(sample_unified_file)]):
                 result = app.main()
                 assert result == 0  # Should generate template successfully
@@ -412,15 +412,14 @@ return JSON.stringify(result);"""
 
     def test_stdin_unified_format_processing(self, sample_unified_file):
         """Test processing unified format from STDIN."""
-        import io
-        import contextlib
+        from unittest.mock import patch
         
         # Read the sample file content
         with open(sample_unified_file, 'r') as f:
             yaml_content = f.read()
         
         # Mock stdin with the YAML content
-        with contextlib.redirect_stdin(io.StringIO(yaml_content)):
+        with patch('sys.stdin.read', return_value=yaml_content):
             loader = DataLoader()
             config = loader.load_from_stdin()
             
@@ -434,7 +433,7 @@ return JSON.stringify(result);"""
         
         app = PromabbixApp()
         # Mock template rendering to avoid needing actual template files
-        with patch('promabbix.core.template.Render.do_template', return_value={"mock": "template"}):
+        with patch('promabbix.core.template.Render.render_file', return_value='{"mock": "template"}'):
             with patch('sys.argv', ['promabbix', str(sample_unified_file), '-o', '-']):
                 result = app.main()
                 assert result == 0  # Should output template to stdout

@@ -119,10 +119,9 @@ class TestDataLoader:
         loader = DataLoader()
         
         with patch.object(loader.console, 'print') as mock_print:
-            with pytest.raises(SystemExit) as exc_info:
+            with pytest.raises(FileNotFoundError):
                 loader.load_from_file('/nonexistent/file.yaml')
             
-            assert exc_info.value.code == 1
             mock_print.assert_called_once()
             call_args = mock_print.call_args[0][0]
             assert "Error reading file:" in call_args
@@ -133,10 +132,9 @@ class TestDataLoader:
         
         with patch('pathlib.Path.read_text', side_effect=PermissionError("Permission denied")):
             with patch.object(loader.console, 'print') as mock_print:
-                with pytest.raises(SystemExit) as exc_info:
+                with pytest.raises(PermissionError):
                     loader.load_from_file('/some/file.yaml')
                 
-                assert exc_info.value.code == 1
                 mock_print.assert_called_once()
                 call_args = mock_print.call_args[0][0]
                 assert "Error reading file:" in call_args
@@ -190,10 +188,9 @@ class TestDataLoader:
             loader = DataLoader()
             
             with patch.object(loader.console, 'print') as mock_print:
-                with pytest.raises(SystemExit) as exc_info:
+                with pytest.raises(ValueError):
                     loader.load_from_file(f.name)
                 
-                assert exc_info.value.code == 1
                 # Should try JSON parsing after YAML returns None
                 mock_print.assert_called_once()
                 

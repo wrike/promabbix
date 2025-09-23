@@ -244,7 +244,7 @@ class TestConfigurationsWithoutWiki:
         
         app = PromabbixApp()
         # Mock template rendering to avoid needing actual template files
-        with patch('promabbix.core.template.Render.do_template', return_value={"mock": "template"}):
+        with patch('promabbix.core.template.Render.render_file', return_value='{"mock": "template"}'):
             with patch('sys.argv', ['promabbix', str(sysops_config_no_wiki)]):
                 result = app.main()
                 assert result == 0  # Should succeed
@@ -256,7 +256,7 @@ class TestConfigurationsWithoutWiki:
         
         app = PromabbixApp()
         # Mock template rendering to avoid needing actual template files
-        with patch('promabbix.core.template.Render.do_template', return_value={"mock": "template"}):
+        with patch('promabbix.core.template.Render.render_file', return_value='{"mock": "template"}'):
             with patch('sys.argv', ['promabbix', str(really_minimal_config)]):
                 result = app.main()
                 assert result == 0  # Should handle minimal config correctly

@@ -85,7 +85,7 @@ class TestPromabbixApp:
         # Check required positional argument
         assert 'alertrules' in actions
         assert actions['alertrules'].type == str
-        assert actions['alertrules'].help == 'Path to prometheus aggregated alert rules (use "-" to read from STDIN)'
+        assert actions['alertrules'].help == 'Path to unified alert configuration file (use "-" to read from STDIN)'
         
         # Check optional arguments
         assert 'templates' in actions
@@ -118,8 +118,16 @@ class TestPromabbixApp:
         mock_loader = MagicMock(spec=DataLoader)
         mock_saver = MagicMock(spec=DataSaver)
         
-        # Setup test data
-        template_data = {"rules": [{"name": "test_rule"}]}
+        # Setup test data - valid configuration with groups
+        template_data = {
+            "groups": [
+                {
+                    "name": "recording_rules",
+                    "rules": [{"record": "test_metric", "expr": "1"}]
+                }
+            ],
+            "zabbix": {"template": "test_template"}
+        }
         rendered_output = '{"template": "rendered"}'
         
         mock_loader.load_from_file.return_value = template_data
@@ -140,15 +148,15 @@ class TestPromabbixApp:
         
         with patch('sys.argv', ['promabbix'] + test_args):
             with patch.object(Render, '__init__', return_value=None):
-                with patch.object(Render, 'do_template', return_value=rendered_output):
+                with patch.object(Render, 'render_file', return_value=rendered_output):
                     app = self.PromabbixApp(loader=mock_loader, saver=mock_saver)
                     app.main()
         
         # Verify interactions
         mock_loader.load_from_file.assert_called_once_with(str(alertrules_file))
         # Use call args to verify the call was made correctly (accounting for path resolution differences)
-        mock_saver.save.assert_called_once()
-        call_args = mock_saver.save.call_args
+        mock_saver.save_to_file.assert_called_once()
+        call_args = mock_saver.save_to_file.call_args
         assert call_args[0][0] == rendered_output  # First argument should be the rendered output
         assert call_args[0][1].resolve() == output_file.resolve()  # Paths should resolve to the same location
         
@@ -180,7 +188,7 @@ class TestPromabbixApp:
         
         with patch('sys.argv', ['promabbix'] + test_args):
             with patch.object(Render, '__init__', return_value=None):
-                with patch.object(Render, 'do_template', return_value=rendered_output):
+                with patch.object(Render, 'render_file', return_value=rendered_output):
                     app = self.PromabbixApp(loader=mock_loader, saver=mock_saver)
                     app.main()
         
@@ -220,7 +228,7 @@ class TestPromabbixApp:
         
         with patch('sys.argv', ['promabbix'] + test_args):
             with patch.object(Render, '__init__', return_value=None):
-                with patch.object(Render, 'do_template', return_value=rendered_output):
+                with patch.object(Render, 'render_file', return_value=rendered_output):
                     app = self.PromabbixApp(loader=mock_loader, saver=mock_saver)
                     app.main()
         
@@ -248,9 +256,9 @@ class TestPromabbixApp:
         with patch('sys.argv', ['promabbix'] + test_args):
             app = self.PromabbixApp(loader=mock_loader, saver=mock_saver)
             
-            # Should propagate the exception
-            with pytest.raises(FileNotFoundError, match="File not found"):
-                app.main()
+            # Should catch the exception and return error code
+            result = app.main()
+            assert result == 1
         
         # Verify loader was called
         mock_loader.load_from_file.assert_called_once_with(str(alertrules_file))
@@ -281,12 +289,12 @@ class TestPromabbixApp:
         
         with patch('sys.argv', ['promabbix'] + test_args):
             with patch.object(Render, '__init__', return_value=None):
-                with patch.object(Render, 'do_template', side_effect=Exception("Template error")):
+                with patch.object(Render, 'render_file', side_effect=Exception("Template error")):
                     app = self.PromabbixApp(loader=mock_loader, saver=mock_saver)
                     
-                    # Should propagate the exception
-                    with pytest.raises(Exception, match="Template error"):
-                        app.main()
+                    # Should catch the exception and return error code
+                    result = app.main()
+                    assert result == 1
         
         # Verify interactions up to the failure point
         mock_loader.load_from_file.assert_called_once_with(str(alertrules_file))
@@ -429,12 +437,12 @@ class TestPromabbixAppIntegration:
         # Mock only the Render class to avoid template complexity
         with patch('sys.argv', ['promabbix'] + test_args):
             with patch.object(Render, '__init__', return_value=None):
-                with patch.object(Render, 'do_template', return_value='{"result": "mocked template output"}') as mock_do_template:
+                with patch.object(Render, 'render_file', return_value='{"result": "mocked template output"}') as mock_render_file:
                     app = self.PromabbixApp()
                     app.main()
                     
                     # Verify template was called
-                    mock_do_template.assert_called_once_with(alertrules_data, 'test.j2')
+                    mock_render_file.assert_called_once()
 
 
 class TestPromabbixAppStdinStdout:
@@ -475,7 +483,7 @@ class TestPromabbixAppStdinStdout:
         
         with patch('sys.argv', ['promabbix'] + test_args):
             with patch.object(Render, '__init__', return_value=None):
-                with patch.object(Render, 'do_template', return_value=rendered_output):
+                with patch.object(Render, 'render_file', return_value=rendered_output):
                     app = self.PromabbixApp(loader=mock_loader, saver=mock_saver)
                     app.main()
         
@@ -514,7 +522,7 @@ class TestPromabbixAppStdinStdout:
         
         with patch('sys.argv', ['promabbix'] + test_args):
             with patch.object(Render, '__init__', return_value=None):
-                with patch.object(Render, 'do_template', return_value=rendered_output):
+                with patch.object(Render, 'render_file', return_value=rendered_output):
                     app = self.PromabbixApp(loader=mock_loader, saver=mock_saver)
                     app.main()
         
@@ -545,7 +553,7 @@ class TestPromabbixAppStdinStdout:
         
         with patch('sys.argv', ['promabbix'] + test_args):
             with patch.object(Render, '__init__', return_value=None):
-                with patch.object(Render, 'do_template', return_value=rendered_output):
+                with patch.object(Render, 'render_file', return_value=rendered_output):
                     app = self.PromabbixApp(loader=mock_loader, saver=mock_saver)
                     app.main()
         
@@ -575,7 +583,7 @@ class TestPromabbixAppStdinStdout:
         
         with patch('sys.argv', ['promabbix'] + test_args):
             with patch.object(Render, '__init__', return_value=None):
-                with patch.object(Render, 'do_template', return_value=''):
+                with patch.object(Render, 'render_file', return_value=''):
                     app = self.PromabbixApp(loader=mock_loader, saver=mock_saver)
                     app.main()
         
@@ -602,9 +610,9 @@ class TestPromabbixAppStdinStdout:
         with patch('sys.argv', ['promabbix'] + test_args):
             app = self.PromabbixApp(loader=mock_loader, saver=mock_saver)
             
-            # Should propagate the exception
-            with pytest.raises(ValueError, match="Invalid STDIN data"):
-                app.main()
+            # Should catch the exception and return error code
+            result = app.main()
+            assert result == 1
         
         # Verify loader was called
         mock_loader.load_from_stdin.assert_called_once()
@@ -637,12 +645,12 @@ class TestPromabbixAppStdinStdout:
         
         with patch('sys.argv', ['promabbix'] + test_args):
             with patch.object(Render, '__init__', return_value=None):
-                with patch.object(Render, 'do_template', return_value=rendered_output):
+                with patch.object(Render, 'render_file', return_value=rendered_output):
                     app = self.PromabbixApp(loader=mock_loader, saver=mock_saver)
                     
-                    # Should propagate the exception
-                    with pytest.raises(IOError, match="Broken pipe"):
-                        app.main()
+                    # Should catch the exception and return error code
+                    result = app.main()
+                    assert result == 1
         
         # Verify interactions up to the failure point
         mock_loader.load_from_file.assert_called_once_with(str(alertrules_file))

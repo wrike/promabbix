@@ -472,12 +472,9 @@ class TestCrossSectionValidation:
             }
         }
         
-        # Should raise ValidationError for extra documentation (warning)
+        # Extra documentation should be allowed (for legacy/future alerts)
         validator = ConfigValidator()
-        with pytest.raises(ValidationError) as excinfo:
-            validator.validate_config(config)
-        assert "legacy_alert" in str(excinfo.value)
-        assert "undefined alerts" in str(excinfo.value)
+        validator.validate_config(config)  # Should not raise exception
 
     def test_zabbix_host_template_reference_validation(self):
         """Test validation of zabbix host template references."""

@@ -147,11 +147,11 @@ class TestCLIValidationIntegration:
         app = PromabbixApp()
         
         # Mock the template rendering to avoid needing actual template files
-        with patch('promabbix.core.template.Render.do_template', return_value={"mock": "template"}):
+        with patch('promabbix.core.template.Render.render_file', return_value='{"mock": "template"}'):
             with patch('sys.argv', ['promabbix', str(config_file), '-o', str(output_file)]):
                 result = app.main()
                 # Should validate first, then generate template
-                assert result == 1
+                assert result == 0
 
     def test_validation_failure_prevents_template_generation(self, temp_directory):
         """Test that validation failure prevents template generation."""
@@ -233,7 +233,7 @@ class TestCLIValidationIntegration:
             captured = capsys.readouterr()
             # Should have success message
             success_output = captured.out or captured.err
-            assert "✅" in success_output or "SUCCESS" in success_output or "validation successful" in success_output.lower()
+            assert "✓" in success_output or "Configuration validation passed" in success_output or "validation successful" in success_output.lower()
 
     def test_stdin_validation_mode(self, capsys):
         """Test validation mode with STDIN input."""

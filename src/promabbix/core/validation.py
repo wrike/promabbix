@@ -314,17 +314,6 @@ class CrossReferenceValidator:
                 ]
             ))
         
-        # Find extra documentation (warn but don't fail)
-        extra_docs = wiki_alert_names - alert_names
-        if extra_docs:
-            errors.append(ValidationError(
-                f"Wiki documentation exists for undefined alerts: {', '.join(sorted(extra_docs))}",
-                path="wiki.knowledgebase.alerts.alertings",
-                suggestions=[
-                    "Remove documentation for non-existent alerts",
-                    "Check for typos in alert names"
-                ]
-            ))
         
         return errors
     
