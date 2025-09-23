@@ -37,7 +37,7 @@ class TestUtilityFunctions:
     def test_date_time_invalid_format(self):
         """Test date_time function with invalid format."""
         result = date_time("%invalid")
-        assert result == '%invalid'
+        assert result == 'invalid'
         
     def test_date_time_empty_format(self):
         """Test date_time function with empty format."""

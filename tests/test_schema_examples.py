@@ -218,7 +218,7 @@ class TestSchemaValidationExamples:
                         "link_templates": ["templ_module_promt_comprehensive_service"],
                         "status": "enabled",
                         "state": "present",
-                        "proxy": null,
+                        "proxy": None,
                         "macros": [
                             {
                                 "macro": "{$ENVIRONMENT}",
@@ -260,15 +260,17 @@ class TestSchemaValidationExamples:
         """Test minimal valid configuration passes schema validation."""
         with pytest.raises(NotImplementedError):
             # Should pass validation when schema validation is implemented
-            import jsonschema
-            jsonschema.validate(minimal_valid_config, unified_schema)
+            from promabbix.core.validation import ConfigValidator
+            validator = ConfigValidator()
+            validator.validate_config(minimal_valid_config)
 
     def test_comprehensive_config_schema_validation(self, comprehensive_valid_config, unified_schema):
         """Test comprehensive configuration passes schema validation."""
         with pytest.raises(NotImplementedError):
             # Should pass validation when schema validation is implemented
-            import jsonschema
-            jsonschema.validate(comprehensive_valid_config, unified_schema)
+            from promabbix.core.validation import ConfigValidator
+            validator = ConfigValidator()
+            validator.validate_config(comprehensive_valid_config)
 
     def test_missing_required_groups_fails_validation(self, unified_schema):
         """Test that missing required 'groups' section fails validation."""
@@ -280,9 +282,10 @@ class TestSchemaValidationExamples:
         
         with pytest.raises(NotImplementedError):
             # Should fail validation when implemented
-            import jsonschema
-            with pytest.raises(jsonschema.ValidationError):
-                jsonschema.validate(invalid_config, unified_schema)
+            from promabbix.core.validation import ConfigValidator, ValidationError
+            validator = ConfigValidator()
+            with pytest.raises(ValidationError):
+                validator.validate_config(invalid_config)
 
     def test_missing_required_zabbix_fails_validation(self, unified_schema):
         """Test that missing required 'zabbix' section fails validation."""
@@ -297,9 +300,10 @@ class TestSchemaValidationExamples:
         
         with pytest.raises(NotImplementedError):
             # Should fail validation when implemented
-            import jsonschema
-            with pytest.raises(jsonschema.ValidationError):
-                jsonschema.validate(invalid_config, unified_schema)
+            from promabbix.core.validation import ConfigValidator, ValidationError
+            validator = ConfigValidator()
+            with pytest.raises(ValidationError):
+                validator.validate_config(invalid_config)
 
     def test_invalid_group_name_fails_validation(self, unified_schema):
         """Test that invalid group name fails validation."""
@@ -317,9 +321,10 @@ class TestSchemaValidationExamples:
         
         with pytest.raises(NotImplementedError):
             # Should fail validation when implemented
-            import jsonschema
-            with pytest.raises(jsonschema.ValidationError):
-                jsonschema.validate(invalid_config, unified_schema)
+            from promabbix.core.validation import ConfigValidator, ValidationError
+            validator = ConfigValidator()
+            with pytest.raises(ValidationError):
+                validator.validate_config(invalid_config)
 
     def test_recording_rule_missing_record_fails_validation(self, unified_schema):
         """Test that recording rule without 'record' field fails validation."""
@@ -342,9 +347,10 @@ class TestSchemaValidationExamples:
         
         with pytest.raises(NotImplementedError):
             # Should fail validation when implemented
-            import jsonschema
-            with pytest.raises(jsonschema.ValidationError):
-                jsonschema.validate(invalid_config, unified_schema)
+            from promabbix.core.validation import ConfigValidator, ValidationError
+            validator = ConfigValidator()
+            with pytest.raises(ValidationError):
+                validator.validate_config(invalid_config)
 
     def test_alerting_rule_missing_alert_fails_validation(self, unified_schema):
         """Test that alerting rule without 'alert' field fails validation."""
@@ -370,9 +376,10 @@ class TestSchemaValidationExamples:
         
         with pytest.raises(NotImplementedError):
             # Should fail validation when implemented
-            import jsonschema
-            with pytest.raises(jsonschema.ValidationError):
-                jsonschema.validate(invalid_config, unified_schema)
+            from promabbix.core.validation import ConfigValidator, ValidationError
+            validator = ConfigValidator()
+            with pytest.raises(ValidationError):
+                validator.validate_config(invalid_config)
 
     def test_invalid_zabbix_priority_fails_validation(self, unified_schema):
         """Test that invalid __zbx_priority value fails validation."""
@@ -401,9 +408,10 @@ class TestSchemaValidationExamples:
         
         with pytest.raises(NotImplementedError):
             # Should fail validation when implemented
-            import jsonschema
-            with pytest.raises(jsonschema.ValidationError):
-                jsonschema.validate(invalid_config, unified_schema)
+            from promabbix.core.validation import ConfigValidator, ValidationError
+            validator = ConfigValidator()
+            with pytest.raises(ValidationError):
+                validator.validate_config(invalid_config)
 
     def test_invalid_host_status_fails_validation(self, unified_schema):
         """Test that invalid host status fails validation."""
@@ -431,9 +439,10 @@ class TestSchemaValidationExamples:
         
         with pytest.raises(NotImplementedError):
             # Should fail validation when implemented
-            import jsonschema
-            with pytest.raises(jsonschema.ValidationError):
-                jsonschema.validate(invalid_config, unified_schema)
+            from promabbix.core.validation import ConfigValidator, ValidationError
+            validator = ConfigValidator()
+            with pytest.raises(ValidationError):
+                validator.validate_config(invalid_config)
 
     def test_invalid_lld_formulaid_fails_validation(self, unified_schema):
         """Test that invalid LLD formulaid fails validation."""
@@ -463,9 +472,10 @@ class TestSchemaValidationExamples:
         
         with pytest.raises(NotImplementedError):
             # Should fail validation when implemented
-            import jsonschema
-            with pytest.raises(jsonschema.ValidationError):
-                jsonschema.validate(invalid_config, unified_schema)
+            from promabbix.core.validation import ConfigValidator, ValidationError
+            validator = ConfigValidator()
+            with pytest.raises(ValidationError):
+                validator.validate_config(invalid_config)
 
     def test_invalid_macro_format_fails_validation(self, unified_schema):
         """Test that invalid macro format fails validation."""
@@ -489,9 +499,10 @@ class TestSchemaValidationExamples:
         
         with pytest.raises(NotImplementedError):
             # Should fail validation when implemented
-            import jsonschema
-            with pytest.raises(jsonschema.ValidationError):
-                jsonschema.validate(invalid_config, unified_schema)
+            from promabbix.core.validation import ConfigValidator, ValidationError
+            validator = ConfigValidator()
+            with pytest.raises(ValidationError):
+                validator.validate_config(invalid_config)
 
     def test_invalid_template_name_fails_validation(self, unified_schema):
         """Test that invalid template name fails validation."""
@@ -509,9 +520,10 @@ class TestSchemaValidationExamples:
         
         with pytest.raises(NotImplementedError):
             # Should fail validation when implemented
-            import jsonschema
-            with pytest.raises(jsonschema.ValidationError):
-                jsonschema.validate(invalid_config, unified_schema)
+            from promabbix.core.validation import ConfigValidator, ValidationError
+            validator = ConfigValidator()
+            with pytest.raises(ValidationError):
+                validator.validate_config(invalid_config)
 
     def test_invalid_record_name_fails_validation(self, unified_schema):
         """Test that invalid record name fails validation."""
@@ -534,9 +546,10 @@ class TestSchemaValidationExamples:
         
         with pytest.raises(NotImplementedError):
             # Should fail validation when implemented
-            import jsonschema
-            with pytest.raises(jsonschema.ValidationError):
-                jsonschema.validate(invalid_config, unified_schema)
+            from promabbix.core.validation import ConfigValidator, ValidationError
+            validator = ConfigValidator()
+            with pytest.raises(ValidationError):
+                validator.validate_config(invalid_config)
 
     def test_missing_annotations_summary_fails_validation(self, unified_schema):
         """Test that alerting rule without summary annotation fails validation."""
@@ -563,9 +576,10 @@ class TestSchemaValidationExamples:
         
         with pytest.raises(NotImplementedError):
             # Should fail validation when implemented
-            import jsonschema
-            with pytest.raises(jsonschema.ValidationError):
-                jsonschema.validate(invalid_config, unified_schema)
+            from promabbix.core.validation import ConfigValidator, ValidationError
+            validator = ConfigValidator()
+            with pytest.raises(ValidationError):
+                validator.validate_config(invalid_config)
 
     def test_invalid_prometheus_url_format_fails_validation(self, unified_schema):
         """Test that invalid Prometheus URL format fails validation."""
@@ -588,9 +602,10 @@ class TestSchemaValidationExamples:
         
         with pytest.raises(NotImplementedError):
             # Should fail validation when implemented
-            import jsonschema
-            with pytest.raises(jsonschema.ValidationError):
-                jsonschema.validate(invalid_config, unified_schema)
+            from promabbix.core.validation import ConfigValidator, ValidationError
+            validator = ConfigValidator()
+            with pytest.raises(ValidationError):
+                validator.validate_config(invalid_config)
 
     def test_additional_properties_not_allowed(self, unified_schema):
         """Test that additional properties not defined in schema are rejected."""
@@ -611,9 +626,10 @@ class TestSchemaValidationExamples:
         
         with pytest.raises(NotImplementedError):
             # Should fail validation when implemented
-            import jsonschema
-            with pytest.raises(jsonschema.ValidationError):
-                jsonschema.validate(invalid_config, unified_schema)
+            from promabbix.core.validation import ConfigValidator, ValidationError
+            validator = ConfigValidator()
+            with pytest.raises(ValidationError):
+                validator.validate_config(invalid_config)
 
     def test_empty_arrays_allowed_where_appropriate(self, unified_schema):
         """Test that empty arrays are allowed for optional array fields."""
@@ -634,8 +650,9 @@ class TestSchemaValidationExamples:
         
         with pytest.raises(NotImplementedError):
             # Should pass validation when implemented
-            import jsonschema
-            jsonschema.validate(valid_config, unified_schema)
+            from promabbix.core.validation import ConfigValidator
+            validator = ConfigValidator()
+            validator.validate_config(valid_config)
 
     def test_schema_supports_contextual_macros(self, unified_schema):
         """Test that schema supports contextual macros like {$MACRO:\"context\"}."""
@@ -664,5 +681,6 @@ class TestSchemaValidationExamples:
         
         with pytest.raises(NotImplementedError):
             # Should pass validation when implemented
-            import jsonschema
-            jsonschema.validate(valid_config, unified_schema)
+            from promabbix.core.validation import ConfigValidator
+            validator = ConfigValidator()
+            validator.validate_config(valid_config)
