@@ -7,6 +7,7 @@
 from pathlib import Path
 from typing import Any, Dict, Union
 from rich.console import Console
+import jinja2
 from jinja2 import Environment, FileSystemLoader
 from jinja2.exceptions import (TemplateSyntaxError, UndefinedError, TemplateRuntimeError,
                                TemplateAssertionError)
@@ -41,7 +42,7 @@ def get_jinja2_globals():
 
 
 def get_jinja2_filters():
-    from core.data_utils import isjson
+    from .data_utils import isjson
     from ansible.plugins.filter.core import (
         combine, regex_findall, regex_replace, regex_search, to_json, to_uuid,
         dict_to_list_of_dict_key_value_elements, list_of_dict_key_value_elements_to_dict
@@ -145,3 +146,38 @@ class Render:
             if 0 < e.lineno <= len(lines):
                 self.console.print(lines[e.lineno-1])
             return False
+    
+    def render_file(self, template_path: Union[str, Path], template_name: str, data: Dict[str, Any]) -> str:
+        """
+        Render a template file with the given data.
+        
+        Args:
+            template_path: Path to template directory
+            template_name: Name of template file
+            data: Data to render template with
+            
+        Returns:
+            Rendered template content
+        """
+        # Set the search path and render the template
+        original_searchpath = self.searchpath
+        try:
+            self.searchpath = str(template_path) if template_path else None
+            # Update the Jinja environment with new searchpath
+            if self.searchpath:
+                self.jinja_env = jinja2.Environment(
+                    loader=jinja2.FileSystemLoader(self.searchpath),
+                    undefined=jinja2.StrictUndefined
+                )
+                # Re-add filters, globals, and tests
+                for k, v in get_jinja2_filters().items():
+                    self.jinja_env.filters[k] = v
+                for k, v in get_jinja2_globals().items():
+                    self.jinja_env.globals[k] = v
+                for k, v in get_jinja2_tests().items():
+                    self.jinja_env.tests[k] = v
+                self.jinja_env.globals['lookup_template'] = self.do_template
+            
+            return self.render(template_name, data)
+        finally:
+            self.searchpath = original_searchpath

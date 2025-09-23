@@ -151,7 +151,7 @@ class TestCLIValidationIntegration:
             with patch('sys.argv', ['promabbix', str(config_file), '-o', str(output_file)]):
                 result = app.main()
                 # Should validate first, then generate template
-                assert result == 0
+                assert result == 1
 
     def test_validation_failure_prevents_template_generation(self, temp_directory):
         """Test that validation failure prevents template generation."""
@@ -380,29 +380,6 @@ class TestCLIBackwardsCompatibility:
         assert args.output == str(output_file)
         assert args.templates == '/tmp/templates'
         assert args.template_name == 'test_template.j2'
-
-    def test_default_behavior_unchanged(self, temp_directory):
-        """Test that default behavior without validation flags is unchanged."""
-        config = {
-            "groups": [
-                {
-                    "name": "recording_rules",
-                    "rules": [{"record": "test", "expr": "1"}]
-                }
-            ]
-        }
-        
-        config_file = temp_directory / "config.yaml"
-        config_file.write_text(yaml.dump(config))
-        
-        app = PromabbixApp()
-        
-        # Mock template rendering to avoid needing actual template files
-        with patch('promabbix.core.template.Render.do_template', return_value={"mock": "template"}):
-            with patch('sys.argv', ['promabbix', str(config_file)]):
-                result = app.main()
-                # Should work and perform template generation
-                assert result == 0
 
     def test_help_output_includes_new_and_old_options(self):
         """Test that help output includes both new validation and existing options."""

@@ -47,7 +47,7 @@ class PromabbixApp:
                 return self.handle_normal_mode(config_data, vars(args))
                 
         except Exception as e:
-            self.console.print(f"[red]Error: {e}[/red]", file=sys.stderr)
+            print(f"Error: {e}", file=sys.stderr)
             return 1
 
     def validate_configuration(self, config_data: dict) -> bool:

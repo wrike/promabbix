@@ -49,7 +49,7 @@ class DataLoader:
             last_json_error = str(e)
 
         self.console.print(f"ERROR: Failed to parse as YAML ({last_yaml_error}) or JSON ({last_json_error})", style="bold red")
-        sys.exit(1)
+        raise ValueError(f"Failed to parse as YAML ({last_yaml_error}) or JSON ({last_json_error})")
 
     def load_from_file(self, filename: str) -> Any:
         """
@@ -63,7 +63,7 @@ class DataLoader:
             data = file_path.read_text(encoding='utf-8')
         except Exception as e:
             self.console.print(f"Error reading file: {e}", style="bold red")
-            sys.exit(1)
+            raise
 
         return self._parse_data(data)
 
@@ -77,7 +77,7 @@ class DataLoader:
             data = sys.stdin.read()
         except Exception as e:
             self.console.print(f"Error reading from STDIN: {e}", style="bold red")
-            sys.exit(1)
+            raise
 
         if not data.strip():
             self.console.print("Warning: No data received from STDIN", style="bold yellow")
@@ -95,44 +95,57 @@ class DataSaver:
     def __init__(self):
         self.console = Console(stderr=True)
 
-    def save_json_to_file(self, data: Any, filename: str) -> None:
+    def save_to_file(self, data: Any, filename: str) -> None:
+        """
+        Save data to file with format determined by filename suffix.
+        Supports .json, .yaml, .yml extensions.
+        """
         file_path = Path(filename).expanduser().resolve()
+        ext = file_path.suffix.lower()
+        
         try:
-            if isinstance(data, str):
-                try:
-                    parsed = json.loads(data)
-                    data_to_write = json.dumps(parsed, indent=2, ensure_ascii=False)
-                except Exception:
-                    # Not valid JSON; treat as plain text
-                    self.console.print("Warning: String is not valid JSON, saving as plain text.", style="bold yellow")
-                    data_to_write = data
-            else:
-                data_to_write = json.dumps(data, indent=2, ensure_ascii=False)
-            file_path.write_text(data_to_write, encoding='utf-8')
-            self.console.print(f"Data saved as JSON to {file_path}.", style="green")
-        except Exception as e:
-            self.console.print(f"[bold red]Error saving JSON file:[/bold red] {e}")
-
-    def save_yaml_to_file(self, data: Any, filename: str) -> None:
-        file_path = Path(filename).expanduser().resolve()
-        try:
-            if isinstance(data, str):
-                try:
-                    parsed_data = yaml.load(data, Loader=Loader)
-                    if parsed_data is None:
-                        # empty string, treat as is
+            if ext == '.json':
+                # JSON format
+                if isinstance(data, str):
+                    try:
+                        parsed = json.loads(data)
+                        data_to_write = json.dumps(parsed, indent=2, ensure_ascii=False)
+                    except Exception:
+                        # Not valid JSON; treat as plain text
+                        self.console.print("Warning: String is not valid data format, saving as plain text.", style="bold yellow")
                         data_to_write = data
-                    else:
-                        data_to_write = yaml.dump(parsed_data, allow_unicode=True, sort_keys=False)
-                except Exception:
-                    self.console.print("Warning: String is not valid YAML/JSON, saving as plain text.", style="bold yellow")
-                    data_to_write = data  # not parseable, save as is
+                else:
+                    data_to_write = json.dumps(data, indent=2, ensure_ascii=False)
+            elif ext in {'.yaml', '.yml'}:
+                # YAML format
+                if isinstance(data, str):
+                    try:
+                        parsed_data = yaml.load(data, Loader=Loader)
+                        if parsed_data is None:
+                            # empty string, treat as is
+                            data_to_write = data
+                        else:
+                            data_to_write = yaml.dump(parsed_data, allow_unicode=True, sort_keys=False)
+                    except Exception:
+                        self.console.print("Warning: String is not valid data format, saving as plain text.", style="bold yellow")
+                        data_to_write = data  # not parseable, save as is
+                else:
+                    data_to_write = yaml.dump(data, allow_unicode=True, sort_keys=False)
             else:
-                data_to_write = yaml.dump(data, allow_unicode=True, sort_keys=False)
+                # Default to text format for unknown extensions
+                if isinstance(data, str):
+                    data_to_write = data
+                elif isinstance(data, (dict, list)):
+                    # Default to JSON for structured data
+                    data_to_write = json.dumps(data, indent=2, ensure_ascii=False)
+                else:
+                    data_to_write = str(data)
+            
             file_path.write_text(data_to_write, encoding='utf-8')
-            self.console.print(f"Data saved as YAML to {file_path}.", style="green")
+            self.console.print(f"Data saved to {file_path}.", style="green")
         except Exception as e:
-            self.console.print(f"[bold red]Error saving YAML file:[/bold red] {e}")
+            self.console.print(f"[bold red]Error saving file:[/bold red] {e}")
+
 
     def save_text_to_file(self, data: str, filename: str) -> None:
         file_path = Path(filename).expanduser().resolve()
@@ -145,12 +158,12 @@ class DataSaver:
     def save(self, data: Any, filename: str) -> None:
         ext = Path(filename).suffix.lower()
         if ext in {'.json'}:
-            self.save_json_to_file(data, filename)
+            self.save_to_file(data, filename)
         elif ext in {'.yaml', '.yml'}:
-            self.save_yaml_to_file(data, filename)
+            self.save_to_file(data, filename)
         elif isinstance(data, (dict, list)):
             # Default to JSON if data is dict/list
-            self.save_json_to_file(data, filename)
+            self.save_to_file(data, filename)
         elif isinstance(data, str):
             self.save_text_to_file(data, filename)
         else:
@@ -188,4 +201,4 @@ class DataSaver:
 
         except Exception as e:
             self.console.print(f"[bold red]Error writing to STDOUT:[/bold red] {e}")
-            sys.exit(1)
+            raise

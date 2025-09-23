@@ -158,7 +158,7 @@ return JSON.stringify(result);"""
             },
             "wiki": {
                 "templates": {
-                    "alert_config": {
+                    "wrike_alert_config": {
                         "templates": [
                             {
                                 "name": "redis",
@@ -258,7 +258,7 @@ return JSON.stringify(result);"""
             },
             "wiki": {
                 "templates": {
-                    "alert_config": {
+                    "wrike_alert_config": {
                         "templates": [
                             {
                                 "name": "data-export",
@@ -634,7 +634,7 @@ class TestBackwardsCompatibility:
         wiki_content = {
             "wiki": {
                 "templates": {
-                    "alert_config": {
+                    "wrike_alert_config": {
                         "templates": [
                             {
                                 "name": "test-service",

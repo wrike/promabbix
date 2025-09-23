@@ -210,20 +210,20 @@ class TestDataSaver:
         assert saver.console.file is not None
         assert saver.console.file.buffer is not None
         
-    def test_save_json_to_file_dict(self):
-        """Test saving dictionary as JSON file."""
+    def test_save_to_file_json_dict(self):
+        """Test save_to_file for dictionary to JSON file."""
         data = {"name": "test", "items": [1, 2, 3]}
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             saver = DataSaver()
             
             with patch.object(saver.console, 'print') as mock_print:
-                saver.save_json_to_file(data, f.name)
+                saver.save_to_file(data, f.name)
                 
                 # Verify success message
                 mock_print.assert_called_once()
                 call_args = mock_print.call_args[0][0]
-                assert "Data saved as JSON to" in call_args
+                assert "Data saved to" in call_args
                 
             # Verify file content
             saved_data = json.loads(Path(f.name).read_text())
@@ -231,19 +231,19 @@ class TestDataSaver:
             
         Path(f.name).unlink()  # cleanup
         
-    def test_save_json_to_file_valid_json_string(self):
-        """Test saving valid JSON string to file."""
+    def test_save_to_file_valid_json_string(self):
+        """Test save_to_file for valid JSON string to file."""
         data = '{"name": "test", "value": 123}'
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             saver = DataSaver()
             
             with patch.object(saver.console, 'print') as mock_print:
-                saver.save_json_to_file(data, f.name)
+                saver.save_to_file(data, f.name)
                 
                 mock_print.assert_called_once()
                 call_args = mock_print.call_args[0][0]
-                assert "Data saved as JSON to" in call_args
+                assert "Data saved to" in call_args
                 
             # Verify file content is properly formatted
             saved_content = Path(f.name).read_text()
@@ -252,22 +252,22 @@ class TestDataSaver:
             
         Path(f.name).unlink()  # cleanup
         
-    def test_save_json_to_file_invalid_json_string(self):
-        """Test saving invalid JSON string as plain text."""
+    def test_save_to_file_json_invalid_json_string(self):
+        """Test save_to_file for invalid JSON string as plain text."""
         data = "not valid json string"
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             saver = DataSaver()
             
             with patch.object(saver.console, 'print') as mock_print:
-                saver.save_json_to_file(data, f.name)
+                saver.save_to_file(data, f.name)
                 
                 # Should have two calls: warning and success
                 assert mock_print.call_count == 2
                 warning_call = mock_print.call_args_list[0][0][0]
                 success_call = mock_print.call_args_list[1][0][0]
-                assert "Warning: String is not valid JSON" in warning_call
-                assert "Data saved as JSON to" in success_call
+                assert "Warning: String is not valid data format" in warning_call
+                assert "Data saved to" in success_call
                 
             # Verify file content is the original string
             saved_content = Path(f.name).read_text()
@@ -275,15 +275,15 @@ class TestDataSaver:
             
         Path(f.name).unlink()  # cleanup
         
-    def test_save_json_to_file_with_tilde_path(self):
-        """Test saving JSON file with tilde in path."""
+    def test_save_to_file_json_with_tilde_path(self):
+        """Test save_to_file for JSON file with tilde in path."""
         data = {"test": "value"}
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             saver = DataSaver()
             
             with patch.object(saver.console, 'print') as mock_print:
-                saver.save_json_to_file(data, f.name)
+                saver.save_to_file(data, f.name)
                 
                 mock_print.assert_called_once()
                 
@@ -293,7 +293,7 @@ class TestDataSaver:
             
         Path(f.name).unlink()  # cleanup
         
-    def test_save_json_to_file_error(self):
+    def test_save_to_file_json_error(self):
         """Test JSON save error handling."""
         data = {"test": "value"}
         
@@ -301,26 +301,26 @@ class TestDataSaver:
         
         with patch('pathlib.Path.write_text', side_effect=PermissionError("Permission denied")):
             with patch.object(saver.console, 'print') as mock_print:
-                saver.save_json_to_file(data, '/invalid/path/file.json')
+                saver.save_to_file(data, '/invalid/path/file.json')
                 
                 mock_print.assert_called_once()
                 call_args = mock_print.call_args[0][0]
-                assert "Error saving JSON file:" in call_args
+                assert "Error saving file:" in call_args
                 assert "Permission denied" in call_args
                 
-    def test_save_yaml_to_file_dict(self):
-        """Test saving dictionary as YAML file."""
+    def test_save_to_file_yaml_dict(self):
+        """Test save_to_file for dictionary as YAML file."""
         data = {"name": "test", "items": [1, 2, 3], "config": {"debug": True}}
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
             saver = DataSaver()
             
             with patch.object(saver.console, 'print') as mock_print:
-                saver.save_yaml_to_file(data, f.name)
+                saver.save_to_file(data, f.name)
                 
                 mock_print.assert_called_once()
                 call_args = mock_print.call_args[0][0]
-                assert "Data saved as YAML to" in call_args
+                assert "Data saved to" in call_args
                 
             # Verify file content
             saved_data = yaml.safe_load(Path(f.name).read_text())
@@ -328,15 +328,15 @@ class TestDataSaver:
             
         Path(f.name).unlink()  # cleanup
         
-    def test_save_yaml_to_file_valid_yaml_string(self):
-        """Test saving valid YAML string to file."""
+    def test_save_to_file_yaml_valid_yaml_string(self):
+        """Test save_to_file for valid YAML string to file."""
         data = "name: test\nvalue: 123"
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
             saver = DataSaver()
             
             with patch.object(saver.console, 'print') as mock_print:
-                saver.save_yaml_to_file(data, f.name)
+                saver.save_to_file(data, f.name)
                 
                 mock_print.assert_called_once()
                 
@@ -346,15 +346,15 @@ class TestDataSaver:
             
         Path(f.name).unlink()  # cleanup
         
-    def test_save_yaml_to_file_empty_string(self):
-        """Test saving empty string as YAML."""
+    def test_save_to_file_yaml_empty_string(self):
+        """Test save_to_file for empty string as YAML."""
         data = ""
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
             saver = DataSaver()
             
             with patch.object(saver.console, 'print') as mock_print:
-                saver.save_yaml_to_file(data, f.name)
+                saver.save_to_file(data, f.name)
                 
                 mock_print.assert_called_once()
                 
@@ -364,22 +364,22 @@ class TestDataSaver:
             
         Path(f.name).unlink()  # cleanup
         
-    def test_save_yaml_to_file_invalid_yaml_string(self):
-        """Test saving invalid YAML string as plain text."""
+    def test_save_to_file_yaml_invalid_yaml_string(self):
+        """Test save_to_file for invalid YAML string as plain text."""
         data = "not: valid: yaml: string: with: too: many: colons:"
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
             saver = DataSaver()
             
             with patch.object(saver.console, 'print') as mock_print:
-                saver.save_yaml_to_file(data, f.name)
+                saver.save_to_file(data, f.name)
                 
                 # Should have two calls: warning and success
                 assert mock_print.call_count == 2
                 warning_call = mock_print.call_args_list[0][0][0]
                 success_call = mock_print.call_args_list[1][0][0]
-                assert "Warning: String is not valid YAML/JSON" in warning_call
-                assert "Data saved as YAML to" in success_call
+                assert "Warning: String is not valid data format" in warning_call
+                assert "Data saved to" in success_call
                 
             # Verify file content is the original string
             saved_content = Path(f.name).read_text()
@@ -387,7 +387,7 @@ class TestDataSaver:
             
         Path(f.name).unlink()  # cleanup
         
-    def test_save_yaml_to_file_error(self):
+    def test_save_to_file_yaml_error(self):
         """Test YAML save error handling."""
         data = {"test": "value"}
         
@@ -395,15 +395,15 @@ class TestDataSaver:
         
         with patch('pathlib.Path.write_text', side_effect=IOError("Disk full")):
             with patch.object(saver.console, 'print') as mock_print:
-                saver.save_yaml_to_file(data, '/invalid/path/file.yaml')
+                saver.save_to_file(data, '/invalid/path/file.yaml')
                 
                 mock_print.assert_called_once()
                 call_args = mock_print.call_args[0][0]
-                assert "Error saving YAML file:" in call_args
+                assert "Error saving file:" in call_args
                 assert "Disk full" in call_args
                 
     def test_save_text_to_file(self):
-        """Test saving text to file."""
+        """Test save_to_file for text to file."""
         data = "This is a test text content\nwith multiple lines."
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
@@ -444,7 +444,7 @@ class TestDataSaver:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             saver = DataSaver()
             
-            with patch.object(saver, 'save_json_to_file') as mock_save_json:
+            with patch.object(saver, 'save_to_file') as mock_save_json:
                 saver.save(data, f.name)
                 mock_save_json.assert_called_once_with(data, f.name)
                 
@@ -457,7 +457,7 @@ class TestDataSaver:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
             saver = DataSaver()
             
-            with patch.object(saver, 'save_yaml_to_file') as mock_save_yaml:
+            with patch.object(saver, 'save_to_file') as mock_save_yaml:
                 saver.save(data, f.name)
                 mock_save_yaml.assert_called_once_with(data, f.name)
                 
@@ -470,7 +470,7 @@ class TestDataSaver:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
             saver = DataSaver()
             
-            with patch.object(saver, 'save_yaml_to_file') as mock_save_yaml:
+            with patch.object(saver, 'save_to_file') as mock_save_yaml:
                 saver.save(data, f.name)
                 mock_save_yaml.assert_called_once_with(data, f.name)
                 
@@ -483,7 +483,7 @@ class TestDataSaver:
         with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
             saver = DataSaver()
             
-            with patch.object(saver, 'save_json_to_file') as mock_save_json:
+            with patch.object(saver, 'save_to_file') as mock_save_json:
                 saver.save(data, f.name)
                 mock_save_json.assert_called_once_with(data, f.name)
                 
@@ -496,7 +496,7 @@ class TestDataSaver:
         with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
             saver = DataSaver()
             
-            with patch.object(saver, 'save_json_to_file') as mock_save_json:
+            with patch.object(saver, 'save_to_file') as mock_save_json:
                 saver.save(data, f.name)
                 mock_save_json.assert_called_once_with(data, f.name)
                 
@@ -553,7 +553,7 @@ class TestIntegration:
             # Save data
             saver = DataSaver()
             with patch.object(saver.console, 'print'):
-                saver.save_json_to_file(original_data, f.name)
+                saver.save_to_file(original_data, f.name)
             
             # Load data back
             loader = DataLoader()
@@ -576,7 +576,7 @@ class TestIntegration:
             # Save data
             saver = DataSaver()
             with patch.object(saver.console, 'print'):
-                saver.save_yaml_to_file(original_data, f.name)
+                saver.save_to_file(original_data, f.name)
             
             # Load data back
             loader = DataLoader()
@@ -595,7 +595,7 @@ class TestIntegration:
                 # Save as YAML
                 saver = DataSaver()
                 with patch.object(saver.console, 'print'):
-                    saver.save_yaml_to_file(original_data, yaml_file.name)
+                    saver.save_to_file(original_data, yaml_file.name)
                 
                 # Load from YAML
                 loader = DataLoader()
@@ -603,7 +603,7 @@ class TestIntegration:
                 
                 # Save as JSON
                 with patch.object(saver.console, 'print'):
-                    saver.save_json_to_file(loaded_data, json_file.name)
+                    saver.save_to_file(loaded_data, json_file.name)
                 
                 # Load from JSON and verify
                 final_data = loader.load_from_file(json_file.name)
@@ -611,6 +611,90 @@ class TestIntegration:
                 
         Path(yaml_file.name).unlink()  # cleanup
         Path(json_file.name).unlink()  # cleanup
+
+    def test_save_to_file_json_extension(self):
+        """Test save_to_file with .json extension."""
+        data = {"key": "value", "numbers": [1, 2, 3]}
+        saver = DataSaver()
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            with patch.object(saver.console, 'print'):
+                saver.save_to_file(data, f.name)
+            
+            # Read and verify JSON content
+            with open(f.name, 'r') as rf:
+                content = rf.read()
+                loaded_data = json.loads(content)
+                assert loaded_data == data
+                
+        Path(f.name).unlink()  # cleanup
+
+    def test_save_to_file_yaml_extension(self):
+        """Test save_to_file with .yaml extension."""
+        data = {"key": "value", "numbers": [1, 2, 3]}
+        saver = DataSaver()
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            with patch.object(saver.console, 'print'):
+                saver.save_to_file(data, f.name)
+            
+            # Read and verify YAML content
+            with open(f.name, 'r') as rf:
+                content = rf.read()
+                loaded_data = yaml.safe_load(content)
+                assert loaded_data == data
+                
+        Path(f.name).unlink()  # cleanup
+
+    def test_save_to_file_yml_extension(self):
+        """Test save_to_file with .yml extension."""
+        data = {"key": "value", "numbers": [1, 2, 3]}
+        saver = DataSaver()
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            with patch.object(saver.console, 'print'):
+                saver.save_to_file(data, f.name)
+            
+            # Read and verify YAML content
+            with open(f.name, 'r') as rf:
+                content = rf.read()
+                loaded_data = yaml.safe_load(content)
+                assert loaded_data == data
+                
+        Path(f.name).unlink()  # cleanup
+
+    def test_save_to_file_unknown_extension_dict(self):
+        """Test save_to_file with unknown extension defaults to JSON for dict."""
+        data = {"key": "value", "numbers": [1, 2, 3]}
+        saver = DataSaver()
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            with patch.object(saver.console, 'print'):
+                saver.save_to_file(data, f.name)
+            
+            # Should default to JSON for dict/list data
+            with open(f.name, 'r') as rf:
+                content = rf.read()
+                loaded_data = json.loads(content)
+                assert loaded_data == data
+                
+        Path(f.name).unlink()  # cleanup
+
+    def test_save_to_file_unknown_extension_string(self):
+        """Test save_to_file with unknown extension saves string as-is."""
+        data = "This is a plain text string"
+        saver = DataSaver()
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            with patch.object(saver.console, 'print'):
+                saver.save_to_file(data, f.name)
+            
+            # Should save string as-is
+            with open(f.name, 'r') as rf:
+                content = rf.read()
+                assert content == data
+                
+        Path(f.name).unlink()  # cleanup
 
 
 if __name__ == "__main__":
