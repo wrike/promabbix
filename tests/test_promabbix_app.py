@@ -158,7 +158,7 @@ class TestPromabbixApp:
         mock_saver.save_to_file.assert_called_once()
         call_args = mock_saver.save_to_file.call_args
         assert call_args[0][0] == rendered_output  # First argument should be the rendered output
-        assert call_args[0][1].resolve() == output_file.resolve()  # Paths should resolve to the same location
+        assert Path(call_args[0][1]).resolve() == output_file.resolve()  # Paths should resolve to the same location
         
     def test_main_empty_template_output(self, temp_directory):
         """Test main method when template rendering returns empty string."""
@@ -196,7 +196,7 @@ class TestPromabbixApp:
         mock_loader.load_from_file.assert_called_once_with(str(alertrules_file))
         
         # Verify saver was NOT called for empty output
-        mock_saver.save.assert_not_called()
+        mock_saver.save_to_file.assert_not_called()
         
     def test_main_with_tilde_in_output_path(self, temp_directory):
         """Test main method with tilde in output path."""
@@ -204,8 +204,16 @@ class TestPromabbixApp:
         mock_loader = MagicMock(spec=DataLoader)
         mock_saver = MagicMock(spec=DataSaver)
         
-        # Setup test data
-        template_data = {"rules": [{"name": "test_rule"}]}
+        # Setup test data - valid configuration with groups
+        template_data = {
+            "groups": [
+                {
+                    "name": "recording_rules",
+                    "rules": [{"record": "test_metric", "expr": "1"}]
+                }
+            ],
+            "zabbix": {"template": "test_template"}
+        }
         rendered_output = '{"template": "rendered"}'
         
         mock_loader.load_from_file.return_value = template_data
@@ -232,8 +240,8 @@ class TestPromabbixApp:
                     app = self.PromabbixApp(loader=mock_loader, saver=mock_saver)
                     app.main()
         
-        # Verify saver was called with expanded path
-        mock_saver.save.assert_called_once_with(rendered_output, expected_output_path)
+        # Verify saver was called with the original tilde path (expansion happens inside save_to_file)
+        mock_saver.save_to_file.assert_called_once_with(rendered_output, output_with_tilde)
         
     def test_main_handles_loader_exception(self, temp_directory):
         """Test main method handles loader exceptions."""
@@ -263,7 +271,7 @@ class TestPromabbixApp:
         # Verify loader was called
         mock_loader.load_from_file.assert_called_once_with(str(alertrules_file))
         # Verify saver was not called due to exception
-        mock_saver.save.assert_not_called()
+        mock_saver.save_to_file.assert_not_called()
         
     def test_main_handles_render_exception(self, temp_directory):
         """Test main method handles render exceptions."""
@@ -298,7 +306,7 @@ class TestPromabbixApp:
         
         # Verify interactions up to the failure point
         mock_loader.load_from_file.assert_called_once_with(str(alertrules_file))
-        mock_saver.save.assert_not_called()
+        mock_saver.save_to_file.assert_not_called()
 
 
 class TestPromabbixAppArgumentParsing:
@@ -399,18 +407,22 @@ class TestPromabbixAppIntegration:
         alertrules_data = {
             "groups": [
                 {
-                    "name": "test.rules",
+                    "name": "alerting_rules",
                     "rules": [
                         {
                             "alert": "TestAlert",
                             "expr": "up == 0",
                             "for": "5m",
                             "labels": {"severity": "critical"},
-                            "annotations": {"description": "Test alert"}
+                            "annotations": {
+                                "summary": "Test alert summary",
+                                "description": "Test alert"
+                            }
                         }
                     ]
                 }
-            ]
+            ],
+            "zabbix": {"template": "test_template"}
         }
         
         # Create alertrules file
@@ -464,8 +476,16 @@ class TestPromabbixAppStdinStdout:
         mock_loader = MagicMock(spec=DataLoader)
         mock_saver = MagicMock(spec=DataSaver)
         
-        # Setup test data
-        stdin_data = {"rules": [{"name": "stdin_rule"}]}
+        # Setup test data - valid configuration with groups
+        stdin_data = {
+            "groups": [
+                {
+                    "name": "recording_rules",
+                    "rules": [{"record": "test_metric", "expr": "1"}]
+                }
+            ],
+            "zabbix": {"template": "test_template"}
+        }
         rendered_output = '{"template": "from_stdin"}'
         
         # Mock reading from STDIN
@@ -491,10 +511,10 @@ class TestPromabbixAppStdinStdout:
         mock_loader.load_from_stdin.assert_called_once()
         mock_loader.load_from_file.assert_not_called()  # Should not read from file
         # Use call args to verify the call was made correctly
-        mock_saver.save.assert_called_once()
-        call_args = mock_saver.save.call_args
+        mock_saver.save_to_file.assert_called_once()
+        call_args = mock_saver.save_to_file.call_args
         assert call_args[0][0] == rendered_output
-        assert call_args[0][1].resolve() == output_file.resolve()
+        assert Path(call_args[0][1]).resolve() == output_file.resolve()
     
     def test_main_write_to_stdout(self, temp_directory):
         """Test main method writing output to STDOUT when --output is '-'."""
@@ -503,7 +523,15 @@ class TestPromabbixAppStdinStdout:
         mock_saver = MagicMock(spec=DataSaver)
         
         # Setup test data
-        template_data = {"rules": [{"name": "stdout_rule"}]}
+        template_data = {
+            "groups": [
+                {
+                    "name": "recording_rules",
+                    "rules": [{"record": "test_metric", "expr": "1"}]
+                }
+            ],
+            "zabbix": {"template": "test_template"}
+        }
         rendered_output = '{"template": "to_stdout"}'
         
         mock_loader.load_from_file.return_value = template_data
@@ -529,7 +557,7 @@ class TestPromabbixAppStdinStdout:
         # Verify interactions
         mock_loader.load_from_file.assert_called_once_with(str(alertrules_file))
         mock_saver.save_to_stdout.assert_called_once_with(rendered_output)
-        mock_saver.save.assert_not_called()  # Should not save to file
+        mock_saver.save_to_file.assert_not_called()  # Should not save to file
     
     def test_main_stdin_to_stdout(self, temp_directory):
         """Test main method reading from STDIN and writing to STDOUT."""
@@ -537,8 +565,16 @@ class TestPromabbixAppStdinStdout:
         mock_loader = MagicMock(spec=DataLoader)
         mock_saver = MagicMock(spec=DataSaver)
         
-        # Setup test data
-        stdin_data = {"rules": [{"name": "pipe_rule"}]}
+        # Setup test data - valid configuration with groups
+        stdin_data = {
+            "groups": [
+                {
+                    "name": "recording_rules",
+                    "rules": [{"record": "test_metric", "expr": "1"}]
+                }
+            ],
+            "zabbix": {"template": "test_template"}
+        }
         rendered_output = '{"template": "piped_output"}'
         
         mock_loader.load_from_stdin.return_value = stdin_data
@@ -561,7 +597,7 @@ class TestPromabbixAppStdinStdout:
         mock_loader.load_from_stdin.assert_called_once()
         mock_loader.load_from_file.assert_not_called()
         mock_saver.save_to_stdout.assert_called_once_with(rendered_output)
-        mock_saver.save.assert_not_called()
+        mock_saver.save_to_file.assert_not_called()
     
     def test_main_empty_stdin_input(self, temp_directory):
         """Test main method handles empty STDIN input."""
@@ -589,7 +625,7 @@ class TestPromabbixAppStdinStdout:
         
         # Verify interactions
         mock_loader.load_from_stdin.assert_called_once()
-        mock_saver.save.assert_not_called()  # Empty output should not be saved
+        mock_saver.save_to_file.assert_not_called()  # Empty output should not be saved
     
     def test_main_stdin_loader_exception(self, temp_directory):
         """Test main method handles STDIN loader exceptions."""
@@ -617,7 +653,7 @@ class TestPromabbixAppStdinStdout:
         # Verify loader was called
         mock_loader.load_from_stdin.assert_called_once()
         # Verify saver was not called due to exception
-        mock_saver.save.assert_not_called()
+        mock_saver.save_to_file.assert_not_called()
         mock_saver.save_to_stdout.assert_not_called()
     
     def test_main_stdout_saver_exception(self, temp_directory):
@@ -626,8 +662,16 @@ class TestPromabbixAppStdinStdout:
         mock_loader = MagicMock(spec=DataLoader)
         mock_saver = MagicMock(spec=DataSaver)
         
-        # Setup test data and exception
-        template_data = {"rules": [{"name": "test"}]}
+        # Setup test data and exception - valid configuration with groups
+        template_data = {
+            "groups": [
+                {
+                    "name": "recording_rules",
+                    "rules": [{"record": "test_metric", "expr": "1"}]
+                }
+            ],
+            "zabbix": {"template": "test_template"}
+        }
         rendered_output = '{"test": "output"}'
         
         mock_loader.load_from_file.return_value = template_data
@@ -655,7 +699,7 @@ class TestPromabbixAppStdinStdout:
         # Verify interactions up to the failure point
         mock_loader.load_from_file.assert_called_once_with(str(alertrules_file))
         mock_saver.save_to_stdout.assert_called_once_with(rendered_output)
-        mock_saver.save.assert_not_called()
+        mock_saver.save_to_file.assert_not_called()
     
     def test_argument_parser_accepts_dash_for_alertrules(self):
         """Test that argument parser accepts '-' as valid alertrules value."""
