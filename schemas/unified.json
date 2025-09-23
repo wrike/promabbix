@@ -1,0 +1,454 @@
+{
+  "title": "Unified Alert Configuration Schema",
+  "description": "JSON Schema for unified YAML alert configuration format combining alerts, zabbix, and wiki sections",
+  "type": "object",
+  "required": ["groups", "zabbix"],
+  "additionalProperties": false,
+  "properties": {
+    "groups": {
+      "$ref": "#/definitions/prometheus_groups"
+    },
+    "prometheus": {
+      "$ref": "#/definitions/prometheus_config"
+    },
+    "promabbix": {
+      "$ref": "#/definitions/promabbix_config"
+    },
+    "zabbix": {
+      "$ref": "#/definitions/zabbix_config"
+    },
+    "wiki": {
+      "$ref": "#/definitions/wiki_config"
+    }
+  },
+  "definitions": {
+    "prometheus_groups": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "required": ["name", "rules"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": ["recording_rules", "alerting_rules"],
+            "description": "Group type: recording_rules for Prometheus queries, alerting_rules for Zabbix triggers"
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {"$ref": "#/definitions/recording_rule"},
+                {"$ref": "#/definitions/alerting_rule"}
+              ]
+            }
+          }
+        }
+      }
+    },
+    "recording_rule": {
+      "type": "object",
+      "required": ["record", "expr"],
+      "additionalProperties": false,
+      "properties": {
+        "record": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 160,
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_:]*$",
+          "description": "Unique recording rule name, used as metric name"
+        },
+        "expr": {
+          "type": "string",
+          "minLength": 1,
+          "description": "PromQL expression to evaluate"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Additional labels to attach to the metric"
+        }
+      }
+    },
+    "alerting_rule": {
+      "type": "object", 
+      "required": ["alert", "expr"],
+      "additionalProperties": false,
+      "properties": {
+        "alert": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 160,
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_:]*$",
+          "description": "Alert name, should reference a recording rule"
+        },
+        "expr": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Zabbix trigger expression"
+        },
+        "for": {
+          "type": "string",
+          "pattern": "^\\d+[smhd]$",
+          "description": "Duration the expression must be true before firing (e.g., 5m, 1h)"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "properties": {
+            "__zbx_priority": {
+              "type": "string",
+              "enum": ["INFO", "WARNING", "AVERAGE", "HIGH", "DISASTER"],
+              "description": "Zabbix trigger severity level"
+            }
+          }
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "description": {
+              "type": "string",
+              "description": "Detailed alert description with label templating"
+            },
+            "summary": {
+              "type": "string",
+              "description": "Brief alert summary"
+            }
+          },
+          "required": ["summary"]
+        }
+      }
+    },
+    "prometheus_config": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "api": {
+          "type": "object",
+          "required": ["url"],
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "description": "Prometheus/VictoriaMetrics API endpoint"
+            }
+          }
+        },
+        "labels_to_zabbix_macros": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["pattern", "value"],
+            "properties": {
+              "pattern": {
+                "type": "string",
+                "description": "Regex pattern to match in alert templates"
+              },
+              "value": {
+                "type": "string", 
+                "description": "Zabbix macro replacement value"
+              }
+            }
+          }
+        },
+        "query_chars_encoding": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["char", "encode"],
+            "properties": {
+              "char": {"type": "string", "maxLength": 1},
+              "encode": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+    "promabbix_config": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "zabbix_depend_item_preprocessing": {
+          "type": "string",
+          "description": "JSONPath expression for dependent item preprocessing"
+        },
+        "zabbix_master_item_preprocessing": {
+          "type": "string",
+          "description": "JavaScript code for master item preprocessing"
+        }
+      }
+    },
+    "zabbix_config": {
+      "type": "object",
+      "required": ["template"],
+      "additionalProperties": false,
+      "properties": {
+        "template": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$",
+          "description": "Zabbix template name (alphanumeric and underscore only)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable template name"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "lld_filters": {
+          "$ref": "#/definitions/lld_filters"
+        },
+        "macros": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/zabbix_macro"
+          }
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/zabbix_tag"
+          }
+        },
+        "hosts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/zabbix_host"
+          }
+        }
+      }
+    },
+    "lld_filters": {
+      "type": "object",
+      "required": ["filter"],
+      "additionalProperties": false,
+      "properties": {
+        "filter": {
+          "type": "object",
+          "required": ["conditions", "evaltype"],
+          "additionalProperties": false,
+          "properties": {
+            "conditions": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": ["formulaid", "macro", "value"],
+                "additionalProperties": false,
+                "properties": {
+                  "formulaid": {
+                    "type": "string",
+                    "pattern": "^[A-Z]$",
+                    "description": "Single uppercase letter A-Z"
+                  },
+                  "macro": {
+                    "type": "string",
+                    "pattern": "^\\{#[A-Z0-9_]+\\}$",
+                    "description": "LLD macro like {#LABEL_NAME}"
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "Regex pattern or macro reference"
+                  },
+                  "operator": {
+                    "type": "string",
+                    "enum": ["matches", "does not match"],
+                    "default": "matches"
+                  }
+                }
+              }
+            },
+            "evaltype": {
+              "type": "string", 
+              "enum": ["AND", "OR"],
+              "description": "How to combine multiple conditions"
+            }
+          }
+        }
+      }
+    },
+    "zabbix_macro": {
+      "type": "object",
+      "required": ["macro", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "macro": {
+          "type": "string",
+          "pattern": "^\\{\\$[A-Z0-9_.]+(?::[^}]+)?\\}$",
+          "description": "Zabbix macro like {$THRESHOLD} or {$THRESHOLD:\"context\"}"
+        },
+        "value": {
+          "oneOf": [
+            {"type": "string"},
+            {"type": "number"}
+          ],
+          "description": "Macro value"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable macro description"
+        }
+      }
+    },
+    "zabbix_tag": {
+      "type": "object",
+      "required": ["tag", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "tag": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Tag name"
+        },
+        "value": {
+          "type": "string",
+          "description": "Tag value"
+        }
+      }
+    },
+    "zabbix_host": {
+      "type": "object",
+      "required": ["host_name", "visible_name", "host_groups", "link_templates"],
+      "additionalProperties": false,
+      "properties": {
+        "host_name": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9._-]+$",
+          "description": "Zabbix host name (alphanumeric, dots, dashes, underscores)"
+        },
+        "visible_name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable host name"
+        },
+        "host_groups": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "List of Zabbix host groups"
+        },
+        "link_templates": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$"
+          },
+          "description": "List of template names to link to this host"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["enabled", "disabled"],
+          "default": "enabled",
+          "description": "Host monitoring status"
+        },
+        "state": {
+          "type": "string",
+          "enum": ["present", "absent"],
+          "default": "present",
+          "description": "Whether host should exist or be removed"
+        },
+        "proxy": {
+          "oneOf": [
+            {"type": "string"},
+            {"type": "null"}
+          ],
+          "description": "Zabbix proxy name or null for direct monitoring"
+        },
+        "macros": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/zabbix_macro"
+          },
+          "description": "Host-specific macro overrides"
+        }
+      }
+    },
+    "wiki_config": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "templates": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "wrike_alert_config": {
+              "type": "object",
+              "properties": {
+                "templates": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["name", "title"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Template identifier"
+                      },
+                      "title": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Template display title"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "knowledgebase": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "alerts": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "alertings": {
+                  "type": "object",
+                  "patternProperties": {
+                    "^[a-zA-Z][a-zA-Z0-9_:]*$": {
+                      "type": "object",
+                      "required": ["title", "content"],
+                      "additionalProperties": false,
+                      "properties": {
+                        "title": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "Alert documentation title"
+                        },
+                        "content": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "Alert documentation content"
+                        }
+                      }
+                    }
+                  },
+                  "additionalProperties": false,
+                  "description": "Documentation for each alert rule by alert name"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -4,6 +4,7 @@
 .vscode/*
 *.pyc
 *.pyo
+*.swp
 .coverage
 .DS*
 .env
