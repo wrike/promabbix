@@ -20,7 +20,7 @@ class TestSchemaValidationExamples:
     @pytest.fixture
     def unified_schema(self):
         """Load the unified JSON schema."""
-        schema_path = Path(__file__).parent.parent / "schemas" / "unified.json"
+        schema_path = Path(__file__).parent.parent / "src" / "promabbix" / "schemas" / "unified.json"
         if not schema_path.exists():
             raise FileNotFoundError(f"unified.json schema not found at {schema_path}")
         
