@@ -104,49 +104,61 @@ class DataSaver:
         ext = file_path.suffix.lower()
 
         try:
-            if ext == '.json':
-                # JSON format
-                if isinstance(data, str):
-                    try:
-                        parsed = json.loads(data)
-                        data_to_write = json.dumps(parsed, indent=2, ensure_ascii=False)
-                    except Exception:
-                        # Not valid JSON; treat as plain text
-                        self.console.print("Warning: String is not valid data format, saving as plain text.",
-                                           style="bold yellow")
-                        data_to_write = data
-                else:
-                    data_to_write = json.dumps(data, indent=2, ensure_ascii=False)
-            elif ext in {'.yaml', '.yml'}:
-                # YAML format
-                if isinstance(data, str):
-                    try:
-                        parsed_data = yaml.load(data, Loader=Loader)
-                        if parsed_data is None:
-                            # empty string, treat as is
-                            data_to_write = data
-                        else:
-                            data_to_write = yaml.dump(parsed_data, allow_unicode=True, sort_keys=False)
-                    except Exception:
-                        self.console.print("Warning: String is not valid data format, saving as plain text.",
-                                           style="bold yellow")
-                        data_to_write = data  # not parseable, save as is
-                else:
-                    data_to_write = yaml.dump(data, allow_unicode=True, sort_keys=False)
-            else:
-                # Default to text format for unknown extensions
-                if isinstance(data, str):
-                    data_to_write = data
-                elif isinstance(data, (dict, list)):
-                    # Default to JSON for structured data
-                    data_to_write = json.dumps(data, indent=2, ensure_ascii=False)
-                else:
-                    data_to_write = str(data)
-
+            data_to_write = self._format_data_for_extension(data, ext)
             file_path.write_text(data_to_write, encoding='utf-8')
             self.console.print(f"Data saved to {file_path}.", style="green")
         except Exception as e:
             self.console.print(f"[bold red]Error saving file:[/bold red] {e}")
+
+    def _format_data_for_extension(self, data: Any, ext: str) -> str:
+        """Format data according to file extension."""
+        if ext == '.json':
+            return self._format_as_json(data)
+        elif ext in {'.yaml', '.yml'}:
+            return self._format_as_yaml(data)
+        else:
+            return self._format_as_default(data)
+
+    def _format_as_json(self, data: Any) -> str:
+        """Format data as JSON."""
+        if isinstance(data, str):
+            try:
+                parsed = json.loads(data)
+                return json.dumps(parsed, indent=2, ensure_ascii=False)
+            except Exception:
+                self._print_format_warning()
+                return data
+        else:
+            return json.dumps(data, indent=2, ensure_ascii=False)
+
+    def _format_as_yaml(self, data: Any) -> str:
+        """Format data as YAML."""
+        if isinstance(data, str):
+            try:
+                parsed_data = yaml.load(data, Loader=Loader)
+                if parsed_data is None:
+                    return data
+                else:
+                    return yaml.dump(parsed_data, allow_unicode=True, sort_keys=False)
+            except Exception:
+                self._print_format_warning()
+                return data
+        else:
+            return yaml.dump(data, allow_unicode=True, sort_keys=False)
+
+    def _format_as_default(self, data: Any) -> str:
+        """Format data for unknown extensions."""
+        if isinstance(data, str):
+            return data
+        elif isinstance(data, (dict, list)):
+            return json.dumps(data, indent=2, ensure_ascii=False)
+        else:
+            return str(data)
+
+    def _print_format_warning(self) -> None:
+        """Print warning for invalid data format."""
+        self.console.print("Warning: String is not valid data format, saving as plain text.",
+                           style="bold yellow")
 
     def save_text_to_file(self, data: str, filename: str) -> None:
         file_path = Path(filename).expanduser().resolve()

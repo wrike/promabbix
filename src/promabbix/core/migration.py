@@ -84,52 +84,77 @@ def migrate_legacy_service(service_dir: Union[str, Path]) -> Dict[str, Any]:
     if not service_path.is_dir():
         raise ValueError(f"Service path {service_path} is not a directory")
 
-    # Find the alerts file (could have various names)
-    alert_files = list(service_path.glob('*_alerts.yaml'))
-    if not alert_files:
-        raise FileNotFoundError(f"No *_alerts.yaml file found in {service_path}")
-
-    alerts_file = alert_files[0]  # Use the first one found
+    # Find required files
+    alerts_file = _find_alerts_file(service_path)
     zabbix_file = service_path / 'zabbix_vars.yaml'
     wiki_file = service_path / 'wiki_vars.yaml'
 
-    # Load the files
+    # Build unified configuration
     unified_config = {}
+    unified_config['groups'] = _load_alerts_section(alerts_file)
+    unified_config['zabbix'] = _load_zabbix_section(zabbix_file)
 
-    # Load alerts (required)
-    if alerts_file.exists():
-        with open(alerts_file, 'r') as f:
-            alerts_data = yaml.safe_load(f)
-            if alerts_data and 'groups' in alerts_data:
-                unified_config['groups'] = alerts_data['groups']
-            else:
-                raise ValueError(f"Invalid alerts file format in {alerts_file}")
-    else:
+    # Load optional wiki section
+    wiki_data = _load_wiki_section(wiki_file)
+    if wiki_data:
+        unified_config['wiki'] = wiki_data
+
+    # Add default sections
+    _add_default_sections(unified_config)
+
+    return unified_config
+
+
+def _find_alerts_file(service_path: Path) -> Path:
+    """Find the alerts file in the service directory."""
+    alert_files = list(service_path.glob('*_alerts.yaml'))
+    if not alert_files:
+        raise FileNotFoundError(f"No *_alerts.yaml file found in {service_path}")
+    return alert_files[0]
+
+
+def _load_alerts_section(alerts_file: Path) -> Dict[str, Any]:
+    """Load and validate alerts section."""
+    if not alerts_file.exists():
         raise FileNotFoundError(f"Alerts file {alerts_file} not found")
 
-    # Load zabbix configuration (required)
-    if zabbix_file.exists():
-        with open(zabbix_file, 'r') as f:
-            zabbix_data = yaml.safe_load(f)
-            if zabbix_data and 'zabbix' in zabbix_data:
-                unified_config['zabbix'] = zabbix_data['zabbix']
-            else:
-                raise ValueError(f"Invalid zabbix file format in {zabbix_file}")
-    else:
+    with open(alerts_file, 'r') as f:
+        alerts_data = yaml.safe_load(f)
+        if not (alerts_data and 'groups' in alerts_data):
+            raise ValueError(f"Invalid alerts file format in {alerts_file}")
+        return alerts_data['groups']
+
+
+def _load_zabbix_section(zabbix_file: Path) -> Dict[str, Any]:
+    """Load and validate zabbix section."""
+    if not zabbix_file.exists():
         raise FileNotFoundError(f"Zabbix configuration file {zabbix_file} not found")
 
-    # Load wiki configuration (optional)
-    if wiki_file.exists():
-        try:
-            with open(wiki_file, 'r') as f:
-                wiki_data = yaml.safe_load(f)
-                if wiki_data and 'wiki' in wiki_data:
-                    unified_config['wiki'] = wiki_data['wiki']
-        except Exception:
-            # Wiki is optional, so we can ignore parsing errors
-            pass
+    with open(zabbix_file, 'r') as f:
+        zabbix_data = yaml.safe_load(f)
+        if not (zabbix_data and 'zabbix' in zabbix_data):
+            raise ValueError(f"Invalid zabbix file format in {zabbix_file}")
+        return zabbix_data['zabbix']
 
-    # Add default prometheus and promabbix sections if they don't exist
+
+def _load_wiki_section(wiki_file: Path) -> Optional[Dict[str, Any]]:
+    """Load optional wiki section."""
+    if not wiki_file.exists():
+        return None
+
+    try:
+        with open(wiki_file, 'r') as f:
+            wiki_data = yaml.safe_load(f)
+            if wiki_data and 'wiki' in wiki_data:
+                return wiki_data['wiki']
+    except Exception:
+        # Wiki is optional, so we can ignore parsing errors
+        pass
+    return None
+
+
+def _add_default_sections(unified_config: Dict[str, Any]) -> None:
+    """Add default prometheus and promabbix sections if missing."""
     if 'prometheus' not in unified_config:
         unified_config['prometheus'] = {
             'api': {
@@ -152,8 +177,6 @@ for (var i = 0; i < metrics.length; i++) {
 }
 return JSON.stringify(result);'''
         }
-
-    return unified_config
 
 
 def detect_builder_script_format(config_path: Union[str, Path]) -> Optional[str]:

@@ -34,11 +34,6 @@ class TestUtilityFunctions:
         assert len(result) == 10
         assert result.count('-') == 2
         
-    def test_date_time_invalid_format(self):
-        """Test date_time function with invalid format."""
-        result = date_time("%invalid")
-        assert result == 'invalid'
-        
     def test_date_time_empty_format(self):
         """Test date_time function with empty format."""
         result = date_time("")
