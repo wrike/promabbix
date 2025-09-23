@@ -63,7 +63,8 @@ class PromabbixApp:
         Raises:
             ValidationError: If validation fails
         """
-        raise NotImplementedError
+        self.validator.validate_config(config_data)
+        return True
 
     def generate_template(self, config_data: dict, template_path: str, template_name: str) -> str:
         """
@@ -77,7 +78,12 @@ class PromabbixApp:
         Returns:
             Generated template content
         """
-        raise NotImplementedError
+        renderer = Render()
+        return renderer.render_file(
+            template_path=template_path,
+            template_name=template_name,
+            data=config_data
+        )
 
     def handle_validation_only_mode(self, config_data: dict) -> int:
         """
@@ -108,7 +114,24 @@ class PromabbixApp:
         Returns:
             Exit code (0 for success, 1 for failure)
         """
-        raise NotImplementedError
+        try:
+            # First validate the configuration
+            self.validator.validate_config(config_data)
+            
+            # Then generate template (existing functionality)
+            template_content = self.generate_template(
+                config_data, 
+                pargs['templates'], 
+                pargs['template_name']
+            )
+            
+            # Save the generated template
+            self.save_template(template_content, pargs['output'])
+            
+            return 0
+        except ValidationError as e:
+            self.print_validation_error(e)
+            return 1
 
     def load_configuration(self, alertrules_path: str) -> dict:
         """
@@ -133,7 +156,10 @@ class PromabbixApp:
             template_data: Generated template content
             output_path: Output path or "-" for STDOUT
         """
-        raise NotImplementedError
+        if output_path == "-":
+            self.saver.save_to_stdout(template_data)
+        else:
+            self.saver.save_to_file(template_data, output_path)
 
     def print_validation_success(self) -> None:
         """Print validation success message."""
