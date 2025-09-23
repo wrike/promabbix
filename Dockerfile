@@ -68,7 +68,7 @@ USER ${APP_USER}
 # Suggested mount point for input files
 VOLUME ["/mnt"]
 
-ENTRYPOINT ["/usr/bin/tini", "--", "python", "promabbix/promabbix.py"]
+ENTRYPOINT ["/usr/bin/tini", "--", "python", "-m", "promabbix.promabbix"]
 
 # Default input, expects to run with a command like
 CMD ["-h"]
