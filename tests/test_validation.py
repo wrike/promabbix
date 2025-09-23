@@ -119,7 +119,7 @@ class TestUnifiedFormatValidation:
             },
             "wiki": {
                 "templates": {
-                    "alert_config": {
+                    "wrike_alert_config": {
                         "templates": [
                             {
                                 "name": "postgres",
@@ -196,7 +196,7 @@ class TestUnifiedFormatValidation:
             },
             "wiki": {
                 "templates": {
-                    "alert_config": {
+                    "wrike_alert_config": {
                         "templates": [
                             {
                                 "name": "app-server",
@@ -813,7 +813,7 @@ return JSON.stringify(result);"""
             },
             "wiki": {
                 "templates": {
-                    "alert_config": {
+                    "wrike_alert_config": {
                         "templates": [
                             {
                                 "name": "postgres",
@@ -957,7 +957,7 @@ return JSON.stringify(result);"""
             },
             "wiki": {
                 "templates": {
-                    "alert_config": {
+                    "wrike_alert_config": {
                         "templates": [
                             {
                                 "name": "app-server",

@@ -13,6 +13,7 @@ from .core.fs_utils import DataLoader, DataSaver
 from .core.template import Render
 from .core.validation import ConfigValidator, ValidationError
 from rich_argparse import RichHelpFormatter
+from rich.console import Console
 from pathlib import Path
 
 
@@ -22,6 +23,7 @@ class PromabbixApp:
         self.saver = saver
         self.parser = parser if parser else self.app_args()
         self.validator = validator or ConfigValidator()
+        self.console = Console(stderr=True)
 
     def main(self) -> int:
         """
@@ -30,7 +32,23 @@ class PromabbixApp:
         Returns:
             Exit code (0 for success, 1 for failure)
         """
-        raise NotImplementedError
+        try:
+            # Parse command line arguments
+            args = self.parser.parse_args()
+            
+            # Load configuration
+            config_data = self.load_configuration(args.alertrules)
+            
+            if args.validate_only:
+                # Validation-only mode
+                return self.handle_validation_only_mode(config_data)
+            else:
+                # Normal mode (validation + template generation)
+                return self.handle_normal_mode(config_data, vars(args))
+                
+        except Exception as e:
+            self.console.print(f"[red]Error: {e}[/red]", file=sys.stderr)
+            return 1
 
     def validate_configuration(self, config_data: dict) -> bool:
         """
@@ -71,7 +89,13 @@ class PromabbixApp:
         Returns:
             Exit code (0 for success, 1 for failure)
         """
-        raise NotImplementedError
+        try:
+            self.validator.validate_config(config_data)
+            self.print_validation_success()
+            return 0
+        except ValidationError as e:
+            self.print_validation_error(e)
+            return 1
 
     def handle_normal_mode(self, config_data: dict, pargs: dict) -> int:
         """
@@ -96,7 +120,10 @@ class PromabbixApp:
         Returns:
             Loaded configuration dictionary
         """
-        raise NotImplementedError
+        if alertrules_path == "-":
+            return self.loader.load_from_stdin()
+        else:
+            return self.loader.load_from_file(alertrules_path)
 
     def save_template(self, template_data: str, output_path: str) -> None:
         """
@@ -110,7 +137,7 @@ class PromabbixApp:
 
     def print_validation_success(self) -> None:
         """Print validation success message."""
-        raise NotImplementedError
+        self.console.print("[green]✓ Configuration validation passed[/green]")
 
     def print_validation_error(self, error: ValidationError) -> None:
         """
@@ -119,7 +146,8 @@ class PromabbixApp:
         Args:
             error: Validation error to display
         """
-        raise NotImplementedError
+        self.console.print(f"[red]✗ Configuration validation failed:[/red]")
+        self.console.print(f"[red]{error}[/red]")
 
     def app_args(self):
         """Configure command line argument parser."""
