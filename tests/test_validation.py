@@ -21,9 +21,10 @@ class TestConfigValidator:
 
     def test_validator_initialization(self):
         """Test validator can be initialized with default schema."""
-        with pytest.raises(FileNotFoundError):
-            # Should fail until we implement the validator
-            validator = ConfigValidator()
+        # Should successfully initialize with built-in schema
+        validator = ConfigValidator()
+        assert validator.schema is not None
+        assert isinstance(validator.schema, dict)
 
     def test_validator_with_custom_schema(self, temp_directory):
         """Test validator can be initialized with custom schema."""
@@ -36,9 +37,9 @@ class TestConfigValidator:
         }
         schema_file.write_text(json.dumps(schema))
         
-        with pytest.raises(NotImplementedError):
-            # Should fail until we implement the validator
-            validator = ConfigValidator(str(schema_file))
+        # Should work with custom schema file
+        validator = ConfigValidator(str(schema_file))
+        assert validator.schema == schema
 
 
 class TestUnifiedFormatValidation:
@@ -220,10 +221,9 @@ class TestUnifiedFormatValidation:
 
     def test_valid_config_validation(self, valid_config):
         """Test validation of valid configuration."""
-        with pytest.raises(NotImplementedError):
-            # Should fail until we implement the validator
-            validator = ConfigValidator()
-            validator.validate_config(valid_config)
+        # Should pass validation without raising any errors
+        validator = ConfigValidator()
+        validator.validate_config(valid_config)  # Should not raise any exception
 
     def test_valid_second_config_validation(self, valid_config):
         """Test validation of valid second configuration.""" 
