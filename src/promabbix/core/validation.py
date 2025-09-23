@@ -56,7 +56,7 @@ class ConfigValidator:
     def default_schema_path(self) -> str:
         """Get path to default built-in schema."""
         # Get the path to the schemas directory relative to this file
-        current_dir = Path(__file__).parent.parent
+        current_dir = Path(__file__).parent.parent.parent
         return str(current_dir / "schemas" / "unified.json")
 
     def load_schema(self) -> Dict[str, Any]:
