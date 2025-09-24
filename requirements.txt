@@ -2,6 +2,6 @@ ansible-core == 2.17.*
 attrs == 23.2.0
 click == 8.1.*
 Jinja2 == 3.1.*
-pydantic == 2.8.*
+jsonschema == 4.23.*
 PyYAML == 6.0.*
 rich == 14.0.*

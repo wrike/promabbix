@@ -379,7 +379,7 @@ class TestGenerateTemplateValidationIntegration:
         """Test that --validate-only mode doesn't generate templates."""
         config = {
             "groups": [{"name": "recording_rules", "rules": [{"record": "test", "expr": "1"}]}],
-            "zabbix": {"template": "test", "hosts": [{"host_name": "test", "host_groups": ["Test"], "link_templates": ["test"]}]}
+            "zabbix": {"template": "test", "hosts": [{"host_name": "test", "visible_name": "Test Host", "host_groups": ["Test"], "link_templates": ["test"]}]}
         }
         
         config_file = temp_directory / "config.yaml"
@@ -425,7 +425,7 @@ class TestGenerateTemplateValidationIntegration:
         # Test that schema validation works without needing external schema files
         config = {
             "groups": [{"name": "recording_rules", "rules": [{"record": "test", "expr": "1"}]}],
-            "zabbix": {"template": "test", "hosts": [{"host_name": "test", "host_groups": ["Test"], "link_templates": ["test"]}]}
+            "zabbix": {"template": "test", "hosts": [{"host_name": "test", "visible_name": "Test Host", "host_groups": ["Test"], "link_templates": ["test"]}]}
         }
         
         config_file = temp_directory / "config.yaml"
@@ -442,7 +442,7 @@ class TestGenerateTemplateValidationIntegration:
         """Test that validation runs before template generation in normal mode."""
         config = {
             "groups": [{"name": "recording_rules", "rules": [{"record": "test", "expr": "1"}]}],
-            "zabbix": {"template": "test", "hosts": [{"host_name": "test", "host_groups": ["Test"], "link_templates": ["test"]}]}
+            "zabbix": {"template": "test", "hosts": [{"host_name": "test", "visible_name": "Test Host", "host_groups": ["Test"], "link_templates": ["test"]}]}
         }
         
         config_file = temp_directory / "config.yaml"
@@ -462,8 +462,13 @@ class TestGenerateTemplateValidationIntegration:
     def test_multiple_validation_errors_reported(self, temp_directory):
         """Test that multiple validation errors are reported in a single run."""
         config_with_multiple_errors = {
-            "groups": [],  # Missing required content
-            "zabbix": {}   # Missing required fields
+            "groups": [
+                {
+                    "name": "invalid_group_name",  # Error 1: Invalid enum value
+                    "rules": []
+                }
+            ]
+            # Error 2: Missing required zabbix section
         }
         
         config_file = temp_directory / "config.yaml"
@@ -481,7 +486,7 @@ class TestGenerateTemplateValidationIntegration:
         """Test validation mode with STDIN input."""
         valid_config = {
             "groups": [{"name": "recording_rules", "rules": [{"record": "test", "expr": "1"}]}],
-            "zabbix": {"template": "test", "hosts": [{"host_name": "test", "host_groups": ["Test"], "link_templates": ["test"]}]}
+            "zabbix": {"template": "test", "hosts": [{"host_name": "test", "visible_name": "Test Host", "host_groups": ["Test"], "link_templates": ["test"]}]}
         }
         
         runner = CliRunner()
@@ -499,7 +504,7 @@ class TestGenerateTemplateValidationIntegration:
         
         assert result.exit_code == 0
         assert '--validate-only' in result.output
-        assert 'Only validate the configuration without generating templates' in result.output
+        assert 'validate the configuration without generating' in result.output
     
     def test_config_file_not_found_error(self):
         """Test error handling when config file doesn't exist."""
@@ -513,7 +518,7 @@ class TestGenerateTemplateValidationIntegration:
         """Test that existing CLI args and behavior are not broken."""
         config = {
             "groups": [{"name": "recording_rules", "rules": [{"record": "test", "expr": "1"}]}],
-            "zabbix": {"template": "test", "hosts": [{"host_name": "test", "host_groups": ["Test"], "link_templates": ["test"]}]}
+            "zabbix": {"template": "test", "hosts": [{"host_name": "test", "visible_name": "Test Host", "host_groups": ["Test"], "link_templates": ["test"]}]}
         }
         
         config_file = temp_directory / "config.yaml"

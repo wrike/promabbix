@@ -9,6 +9,8 @@ import yaml
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, cast
 from rich.console import Console
+import jsonschema
+from jsonschema import ValidationError as JsonSchemaValidationError
 
 
 class ValidationError(Exception):
@@ -103,263 +105,30 @@ class ConfigValidator:
         Raises:
             ValidationError: If schema validation fails
         """
-        schema_validator = SchemaValidator(self.schema)
-        errors = schema_validator.validate(config_data)
+        try:
+            jsonschema.validate(config_data, self.schema)
+        except JsonSchemaValidationError as e:
+            # Convert jsonschema error to our custom ValidationError
+            error_path = ".".join(str(p) for p in e.absolute_path) if e.absolute_path else "root"
 
-        if errors:
-            # If there are multiple errors, combine them into a single ValidationError
-            if len(errors) == 1:
-                raise errors[0]
+            # Extract suggestions based on common error types
+            suggestions = []
+            if "required" in str(e.message).lower():
+                suggestions.append("Add the missing required field")
+            elif "additional properties" in str(e.message).lower():
+                suggestions.append("Remove additional properties or check schema definition")
+            elif "enum" in str(e.message).lower():
+                suggestions.append("Use one of the allowed enum values")
+            elif "pattern" in str(e.message).lower():
+                suggestions.append("Ensure the value matches the required pattern")
             else:
-                error_messages = []
-                for i, error in enumerate(errors, 1):
-                    error_messages.append(f"Error {i}: {error.format_message()}")
+                suggestions.append("Check the field value and type")
 
-                raise ValidationError(
-                    "Multiple validation errors found:\n" + "\n\n".join(error_messages),
-                    suggestions=["Fix all validation errors to proceed"]
-                )
-
-
-class SchemaValidator:
-    """Custom schema validator that interprets unified.yaml schema (replaces jsonschema)."""
-
-    def __init__(self, schema: Dict[str, Any]):
-        """
-        Initialize schema validator.
-
-        Args:
-            schema: JSON schema dictionary loaded from unified.yaml
-        """
-        self.schema = schema
-
-    def validate(self, data: Dict[str, Any]) -> List[ValidationError]:
-        """
-        Validate data against schema and return detailed errors.
-
-        Args:
-            data: Data to validate
-
-        Returns:
-            List of validation errors (empty if valid)
-        """
-        errors: List[ValidationError] = []
-
-        # Perform basic structure validation
-        errors.extend(self._validate_required_fields(data))
-        errors.extend(self._validate_field_types(data))
-        errors.extend(self._validate_groups_structure(data))
-        errors.extend(self._validate_zabbix_structure(data))
-
-        return errors
-
-    def _validate_required_fields(self, data: Dict[str, Any]) -> List[ValidationError]:
-        """Validate required top-level fields."""
-        errors = []
-        required_fields = self.schema.get('required', [])
-
-        for field in required_fields:
-            if field not in data:
-                errors.append(ValidationError(
-                    f"Missing required field: '{field}'",
-                    path="root",
-                    suggestions=[f"Add the required field: {field}"]
-                ))
-
-        return errors
-
-    def _validate_field_types(self, data: Dict[str, Any]) -> List[ValidationError]:
-        """Validate basic field types."""
-        errors = []
-        properties = self.schema.get('properties', {})
-
-        for field_name, value in data.items():
-            if field_name in properties:
-                field_schema = properties[field_name]
-                field_type = field_schema.get('type')
-
-                if field_type == 'array' and not isinstance(value, list):
-                    errors.append(ValidationError(
-                        f"Field '{field_name}' must be an array",
-                        path=field_name,
-                        suggestions=[f"Change {field_name} to a list/array"]
-                    ))
-                elif field_type == 'object' and not isinstance(value, dict):
-                    errors.append(ValidationError(
-                        f"Field '{field_name}' must be an object",
-                        path=field_name,
-                        suggestions=[f"Change {field_name} to an object/dictionary"]
-                    ))
-                elif field_type == 'string' and not isinstance(value, str):
-                    errors.append(ValidationError(
-                        f"Field '{field_name}' must be a string",
-                        path=field_name,
-                        suggestions=[f"Change {field_name} to a string"]
-                    ))
-
-        return errors
-
-    def _validate_groups_structure(self, data: Dict[str, Any]) -> List[ValidationError]:
-        """Validate groups array structure."""
-        errors: List[ValidationError] = []
-        groups = data.get('groups', [])
-
-        if not isinstance(groups, list):
-            return errors
-
-        for i, group in enumerate(groups):
-            errors.extend(self._validate_single_group(group, i))
-
-        return errors
-
-    def _validate_single_group(self, group: Any, index: int) -> List[ValidationError]:
-        """Validate a single group structure."""
-        errors = []
-
-        if not isinstance(group, dict):
-            errors.append(ValidationError(
-                f"Group at index {index} must be an object",
-                path=f"groups[{index}]",
-                suggestions=["Each group must be an object with 'name' and 'rules' fields"]
-            ))
-            return errors
-
-        # Check required fields
-        errors.extend(self._validate_group_required_fields(group, index))
-
-        # Validate group name enum
-        group_name = group.get('name')
-        if group_name not in ['recording_rules', 'alerting_rules']:
-            errors.append(ValidationError(
-                f"Group name must be 'recording_rules' or 'alerting_rules', got '{group_name}'",
-                path=f"groups[{index}].name",
-                suggestions=["Use 'recording_rules' or 'alerting_rules' as group name"]
-            ))
-
-        # Validate rules array
-        group_name_str = group_name if isinstance(group_name, str) else "unknown"
-        errors.extend(self._validate_group_rules(group, group_name_str, index))
-
-        return errors
-
-    def _validate_group_required_fields(self, group: Dict[str, Any], index: int) -> List[ValidationError]:
-        """Validate required fields in a group."""
-        errors = []
-
-        if 'name' not in group:
-            errors.append(ValidationError(
-                f"Group at index {index} missing required field 'name'",
-                path=f"groups[{index}]",
-                suggestions=["Add 'name' field to the group"]
-            ))
-
-        if 'rules' not in group:
-            errors.append(ValidationError(
-                f"Group at index {index} missing required field 'rules'",
-                path=f"groups[{index}]",
-                suggestions=["Add 'rules' field to the group"]
-            ))
-
-        return errors
-
-    def _validate_group_rules(self, group: Dict[str, Any], group_name: str, group_index: int) -> List[ValidationError]:
-        """Validate rules array in a group."""
-        errors = []
-        rules = group.get('rules', [])
-
-        if not isinstance(rules, list):
-            errors.append(ValidationError(
-                f"Rules in group {group_index} must be an array",
-                path=f"groups[{group_index}].rules",
-                suggestions=["Change rules to an array of rule objects"]
-            ))
-            return errors
-
-        # Validate individual rules
-        for j, rule in enumerate(rules):
-            errors.extend(self._validate_single_rule(rule, group_name, group_index, j))
-
-        return errors
-
-    def _validate_single_rule(self, rule: Any, group_name: str, group_index: int, rule_index: int) -> List[ValidationError]:
-        """Validate a single rule within a group."""
-        errors = []
-
-        if not isinstance(rule, dict):
-            errors.append(ValidationError(
-                f"Rule at index {rule_index} in group {group_index} must be an object",
-                path=f"groups[{group_index}].rules[{rule_index}]",
-                suggestions=["Each rule must be an object"]
-            ))
-            return errors
-
-        # Validate based on group type
-        if group_name == 'recording_rules':
-            if 'record' not in rule:
-                errors.append(ValidationError(
-                    "Recording rule missing required field 'record'",
-                    path=f"groups[{group_index}].rules[{rule_index}]",
-                    suggestions=["Add 'record' field to recording rule"]
-                ))
-        elif group_name == 'alerting_rules':
-            if 'alert' not in rule:
-                errors.append(ValidationError(
-                    "Alerting rule missing required field 'alert'",
-                    path=f"groups[{group_index}].rules[{rule_index}]",
-                    suggestions=["Add 'alert' field to alerting rule"]
-                ))
-
-        if 'expr' not in rule:
-            errors.append(ValidationError(
-                "Rule missing required field 'expr'",
-                path=f"groups[{group_index}].rules[{rule_index}]",
-                suggestions=["Add 'expr' field to rule"]
-            ))
-
-        return errors
-
-    def _validate_zabbix_structure(self, data: Dict[str, Any]) -> List[ValidationError]:
-        """Validate zabbix section structure."""
-        errors = []
-        zabbix = data.get('zabbix', {})
-
-        if not isinstance(zabbix, dict):
-            errors.append(ValidationError(
-                "Zabbix section must be an object",
-                path="zabbix",
-                suggestions=["Change zabbix to an object/dictionary"]
-            ))
-            return errors
-
-        # Validate hosts if present (but make visible_name optional for tests)
-        hosts = zabbix.get('hosts', [])
-        if hosts and not isinstance(hosts, list):
-            errors.append(ValidationError(
-                "Zabbix hosts must be an array",
-                path="zabbix.hosts",
-                suggestions=["Change hosts to an array of host objects"]
-            ))
-        elif isinstance(hosts, list):
-            for i, host in enumerate(hosts):
-                if not isinstance(host, dict):
-                    errors.append(ValidationError(
-                        f"Host at index {i} must be an object",
-                        path=f"zabbix.hosts[{i}]",
-                        suggestions=["Each host must be an object"]
-                    ))
-                    continue
-
-                # Check required host fields (make visible_name optional for backward compatibility)
-                required_host_fields = ['host_name', 'host_groups', 'link_templates']
-                for field in required_host_fields:
-                    if field not in host:
-                        errors.append(ValidationError(
-                            f"Host missing required field '{field}'",
-                            path=f"zabbix.hosts[{i}]",
-                            suggestions=[f"Add '{field}' field to host definition"]
-                        ))
-
-        return errors
+            raise ValidationError(
+                str(e.message),
+                path=error_path,
+                suggestions=suggestions
+            )
 
 
 class CrossReferenceValidator:

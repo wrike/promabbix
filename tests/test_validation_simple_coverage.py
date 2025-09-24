@@ -15,7 +15,7 @@ import tempfile
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from promabbix.core.validation import (
-    ConfigValidator, ValidationError, SchemaValidator, 
+    ConfigValidator, ValidationError, 
     CrossReferenceValidator, ConfigAnalyzer
 )
 

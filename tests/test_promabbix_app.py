@@ -161,6 +161,7 @@ class TestGenerateTemplateCommandExecution:
         )
         
         config_file = temp_directory / "config.yaml"
+        config_file.write_text("groups: []\nzabbix:\n  template: test")  # Create the file so it exists
         output_file = temp_directory / "output.json"
         
         with patch.object(command, 'generate_template_content', return_value=template_content):
@@ -190,6 +191,7 @@ class TestGenerateTemplateCommandExecution:
         command = GenerateTemplateCommand(loader=mock_loader, validator=mock_validator)
         
         config_file = temp_directory / "config.yaml"
+        config_file.write_text("invalid: config")  # Create the file so it exists
         
         with patch.object(command, 'print_validation_error') as mock_print:
             result = command.execute(
