@@ -105,7 +105,7 @@ jobs:
     - name: Validate container help output
       run: |
         echo "Testing container help output..."
-        help_output=$(docker run --rm promabbix:ci -h)
+        help_output=$(docker run --rm promabbix:ci --help)
         echo "Container help output:"
         echo "$help_output"
         
@@ -122,7 +122,7 @@ jobs:
     - name: Validate container help output with a wrapper and a different working dir
       run: |
         echo "Testing container help output with /tmp as a working directory..."
-        help_output=$(docker run --rm -w /tmp --entrypoint /bin/bash promabbix:ci promabbix -h)
+        help_output=$(docker run --rm -w /tmp --entrypoint /bin/bash promabbix:ci promabbix --help)
         echo "Container help output:"
         echo "$help_output"
         
