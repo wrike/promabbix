@@ -237,29 +237,43 @@ class TestConfigurationsWithoutWiki:
         validator = ConfigValidator()
         validator.validate_config(config)  # Should not raise exception
 
-    def test_template_generation_without_wiki(self, sysops_config_no_wiki):
+    def test_template_generation_without_wiki(self, sysops_config_no_wiki, temp_directory):
         """Test that template generation works without wiki section."""
-        from promabbix.promabbix import PromabbixApp
+        from promabbix.cli.generate_template import GenerateTemplateCommand
         from unittest.mock import patch
         
-        app = PromabbixApp()
+        command = GenerateTemplateCommand()
+        output_file = temp_directory / "output.json"
+        
         # Mock template rendering to avoid needing actual template files
         with patch('promabbix.core.template.Render.render_file', return_value='{"mock": "template"}'):
-            with patch('sys.argv', ['promabbix', str(sysops_config_no_wiki)]):
-                result = app.main()
-                assert result == 0  # Should succeed
+            result = command.execute(
+                config_file=str(sysops_config_no_wiki),
+                output=str(output_file),
+                templates=None,
+                template_name="prometheus_alert_rules_to_zbx_template.j2",
+                validate_only=False
+            )
+            assert result == 0  # Should succeed
 
-    def test_promabbix_app_minimal_config(self, really_minimal_config):
-        """Test Promabbix app with absolutely minimal configuration."""
-        from promabbix.promabbix import PromabbixApp
+    def test_promabbix_app_minimal_config(self, really_minimal_config, temp_directory):
+        """Test GenerateTemplateCommand with absolutely minimal configuration."""
+        from promabbix.cli.generate_template import GenerateTemplateCommand
         from unittest.mock import patch
         
-        app = PromabbixApp()
+        command = GenerateTemplateCommand()
+        output_file = temp_directory / "output.json"
+        
         # Mock template rendering to avoid needing actual template files
         with patch('promabbix.core.template.Render.render_file', return_value='{"mock": "template"}'):
-            with patch('sys.argv', ['promabbix', str(really_minimal_config)]):
-                result = app.main()
-                assert result == 0  # Should handle minimal config correctly
+            result = command.execute(
+                config_file=str(really_minimal_config),
+                output=str(output_file),
+                templates=None,
+                template_name="prometheus_alert_rules_to_zbx_template.j2",
+                validate_only=False
+            )
+            assert result == 0  # Should handle minimal config correctly
 
     def test_mixed_configs_some_with_some_without_wiki(self, temp_directory):
         """Test handling multiple configurations where some have wiki and some don't."""

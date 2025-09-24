@@ -14,7 +14,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from promabbix.core.fs_utils import DataLoader
-from promabbix.promabbix import PromabbixApp
+from promabbix.cli.generate_template import GenerateTemplateCommand
 
 
 class TestUnifiedFormatFileProcessing:
@@ -379,25 +379,35 @@ return JSON.stringify(result);"""
         assert "data_export_queue_depth" in [rule["alert"] for rule in config["groups"][1]["rules"]]
 
     def test_promabbix_app_with_unified_file_validation_only(self, sample_unified_file):
-        """Test Promabbix app with validation-only mode on unified file."""
-        from unittest.mock import patch
-        
-        app = PromabbixApp()
+        """Test GenerateTemplateCommand with validation-only mode on unified file."""
+        command = GenerateTemplateCommand()
         # Test validation-only mode
-        with patch('sys.argv', ['promabbix', str(sample_unified_file), '--validate-only']):
-            result = app.main()
-            assert result == 0  # Should validate successfully
+        result = command.execute(
+            config_file=str(sample_unified_file),
+            output="/tmp/output.json",
+            templates=None,
+            template_name="prometheus_alert_rules_to_zbx_template.j2",
+            validate_only=True
+        )
+        assert result == 0  # Should validate successfully
 
-    def test_promabbix_app_with_unified_file_template_generation(self, sample_unified_file):
-        """Test Promabbix app generating templates from unified file."""
+    def test_promabbix_app_with_unified_file_template_generation(self, sample_unified_file, temp_directory):
+        """Test GenerateTemplateCommand generating templates from unified file."""
         from unittest.mock import patch
         
-        app = PromabbixApp()
+        command = GenerateTemplateCommand()
+        output_file = temp_directory / "output.json"
+        
         # Mock template rendering to avoid needing actual template files
         with patch('promabbix.core.template.Render.render_file', return_value='{"mock": "template"}'):
-            with patch('sys.argv', ['promabbix', str(sample_unified_file)]):
-                result = app.main()
-                assert result == 0  # Should generate template successfully
+            result = command.execute(
+                config_file=str(sample_unified_file),
+                output=str(output_file),
+                templates=None,
+                template_name="prometheus_alert_rules_to_zbx_template.j2",
+                validate_only=False
+            )
+            assert result == 0  # Should generate template successfully
 
     def test_malformed_unified_file_validation_errors(self, malformed_unified_file):
         """Test validation errors with malformed unified config file."""
@@ -431,12 +441,17 @@ return JSON.stringify(result);"""
         """Test generating Zabbix template to STDOUT from unified file."""
         from unittest.mock import patch
         
-        app = PromabbixApp()
+        command = GenerateTemplateCommand()
         # Mock template rendering to avoid needing actual template files
         with patch('promabbix.core.template.Render.render_file', return_value='{"mock": "template"}'):
-            with patch('sys.argv', ['promabbix', str(sample_unified_file), '-o', '-']):
-                result = app.main()
-                assert result == 0  # Should output template to stdout
+            result = command.execute(
+                config_file=str(sample_unified_file),
+                output="-",
+                templates=None,
+                template_name="prometheus_alert_rules_to_zbx_template.j2",
+                validate_only=False
+            )
+            assert result == 0  # Should output template to stdout
 
     def test_file_format_detection_yaml_vs_json(self, temp_directory):
         """Test that DataLoader can handle both YAML and JSON unified formats."""
