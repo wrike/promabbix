@@ -167,7 +167,10 @@ class Render:
             if self.searchpath:
                 self.jinja_env = jinja2.Environment(
                     loader=jinja2.FileSystemLoader(self.searchpath),
-                    undefined=jinja2.StrictUndefined
+                    trim_blocks=True,
+                    lstrip_blocks=True,
+                    comment_start_string="{##",
+                    comment_end_string='##}'
                 )
                 # Re-add filters, globals, and tests
                 for k, v in get_jinja2_filters().items():

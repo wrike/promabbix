@@ -5,8 +5,6 @@
 #
 
 import click
-import sys
-from typing import Optional
 
 from .cli.generate_template import generate_template
 
@@ -14,7 +12,7 @@ from .cli.generate_template import generate_template
 @click.group(invoke_without_command=True)
 @click.version_option()
 @click.pass_context
-def cli(ctx):
+def cli(ctx: click.Context) -> None:
     """Promabbix - Prometheus to Zabbix integration tool."""
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())

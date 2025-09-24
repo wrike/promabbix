@@ -141,6 +141,8 @@ properties:
     type: object
     additionalProperties: false
     properties:
+      template_prefix:
+        type: string
       template:
         type: string
         description: Zabbix template name
@@ -257,7 +259,7 @@ properties:
               type: array
               items:
                 type: string
-              description: List of template names to link to this host
+              description: List of template names to link to this host, use zabbix.template_prefix + zabbix.template
             status:
               type: string
               enum:
