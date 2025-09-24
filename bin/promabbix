@@ -1,3 +1,5 @@
 #!/bin/bash
 
+export PYTHONPATH="/app:$PYTHONPATH"
+
 /venv/bin/python -m promabbix.promabbix "$@"
