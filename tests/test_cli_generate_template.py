@@ -205,54 +205,58 @@ class TestGenerateTemplateCommandClass:
         assert cmd.validator is validator
     
     def test_execute_method_exists(self):
-        """Test that execute method exists and has correct signature."""
+        """Test that execute method exists and handles missing file correctly."""
         cmd = GenerateTemplateCommand()
         
-        # Should raise NotImplementedError for now (skeleton)
-        with pytest.raises(NotImplementedError):
-            cmd.execute("config.yaml", "output.json", None, "template.j2", False)
+        # Should handle missing config file gracefully
+        exit_code = cmd.execute("nonexistent.yaml", "output.json", None, "template.j2", False)
+        assert exit_code == 1  # Should return error code for missing file
     
     def test_load_configuration_method_exists(self):
-        """Test that load_configuration method exists."""
+        """Test that load_configuration method exists and handles missing file."""
         cmd = GenerateTemplateCommand()
         
-        with pytest.raises(NotImplementedError):
-            cmd.load_configuration("config.yaml")
+        with pytest.raises(FileNotFoundError):
+            cmd.load_configuration("nonexistent.yaml")
     
     def test_validate_configuration_method_exists(self):
-        """Test that validate_configuration method exists."""
+        """Test that validate_configuration method exists and works."""
         cmd = GenerateTemplateCommand()
         
-        with pytest.raises(NotImplementedError):
-            cmd.validate_configuration({"groups": [], "zabbix": {}})
+        # Should work with minimal valid config
+        config = {"groups": [{"name": "recording_rules", "rules": []}], "zabbix": {}}
+        cmd.validate_configuration(config)  # Should not raise
     
     def test_generate_template_content_method_exists(self):
-        """Test that generate_template_content method exists."""
+        """Test that generate_template_content method exists and works."""
         cmd = GenerateTemplateCommand()
         
-        with pytest.raises(NotImplementedError):
-            cmd.generate_template_content({}, "/templates", "template.j2")
+        # Should work with minimal valid config
+        config = {"groups": [{"name": "recording_rules", "rules": []}], "zabbix": {"template": "test"}}
+        content = cmd.generate_template_content(config, None, "prometheus_alert_rules_to_zbx_template.j2")
+        assert isinstance(content, str)
+        assert len(content) > 0
     
     def test_save_template_method_exists(self):
-        """Test that save_template method exists."""
+        """Test that save_template method exists and works."""
         cmd = GenerateTemplateCommand()
         
-        with pytest.raises(NotImplementedError):
-            cmd.save_template("template_content", "output.json")
+        # Should work with any content
+        cmd.save_template('{"test": "content"}', "-")  # STDOUT
     
     def test_print_validation_success_method_exists(self):
-        """Test that print_validation_success method exists."""
+        """Test that print_validation_success method exists and works."""
         cmd = GenerateTemplateCommand()
         
-        with pytest.raises(NotImplementedError):
-            cmd.print_validation_success()
+        # Should work without raising
+        cmd.print_validation_success()
     
     def test_print_validation_error_method_exists(self):
-        """Test that print_validation_error method exists."""
+        """Test that print_validation_error method exists and works."""
         cmd = GenerateTemplateCommand()
         
-        with pytest.raises(NotImplementedError):
-            cmd.print_validation_error(Exception("test error"))
+        # Should work without raising
+        cmd.print_validation_error("test error")
 
 
 class TestGenerateTemplateBackwardCompatibility:

@@ -57,6 +57,7 @@ coverage.xml
 
 # Local development
 CLAUDE.local.md
+output.json
 
 # Versioning
 src/promabbix/_version.py

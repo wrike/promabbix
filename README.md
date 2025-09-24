@@ -13,20 +13,63 @@ This tooling allows you to keep you favourite monitoring tool Zabbix and have a 
 
 ## Usage
 
+### CLI Commands
+
+Promabbix provides a command-line interface with multiple subcommands:
+
 ```bash
-# build an image
+# Show available commands
+promabbix --help
+
+# Generate Zabbix template from alert configuration
+promabbix generateTemplate <config-file> [OPTIONS]
+
+# Available options for generateTemplate:
+#   -o, --output PATH          Output file path (use "-" for STDOUT, default: -)
+#   -t, --templates PATH       Custom template directory path
+#   -tn, --template-name NAME  Template file name (default: prometheus_alert_rules_to_zbx_template.j2)
+#   --validate-only           Only validate configuration without generating template
+```
+
+### Local Development Usage
+
+```bash
+# Install dependencies
+pip install -r requirements.txt -r requirements-dev.txt
+
+# Validate configuration only
+python -m promabbix.promabbix generateTemplate examples/minikube-alert-config.yaml --validate-only
+
+# Generate template to file
+python -m promabbix.promabbix generateTemplate examples/minikube-alert-config.yaml -o output.json
+
+# Generate template to STDOUT
+python -m promabbix.promabbix generateTemplate examples/minikube-alert-config.yaml
+
+# Read from STDIN and output to STDOUT
+cat examples/minikube-alert-config.yaml | python -m promabbix.promabbix generateTemplate -
+```
+
+### Docker Usage
+
+```bash
+# Build the image
 docker buildx build -t promabbix:local .
-# or you can use image from DockerHub:
+# or use image from DockerHub:
 # docker pull promabbix/promabbix
 
-# get help
-docker run promabbix:local
+# Get help
+docker run promabbix:local --help
+docker run promabbix:local generateTemplate --help
 
-# read data from STDIN and output on STDOUT
-cat examples/minikube-alert-config.yaml | docker run -i promabbix:local - -o -
+# Read data from STDIN and output to STDOUT
+cat examples/minikube-alert-config.yaml | docker run -i promabbix:local generateTemplate - -o -
 
-# run with a mounted directory and retrieve the result file from there
-docker run --mount type=bind,src=$(pwd)/examples/,dst=/mnt promabbix:local /mnt/minikube-alert-config.yaml -o /mnt/minikube-alert-generated-template.json
+# Run with mounted directory and retrieve result file
+docker run --mount type=bind,src=$(pwd)/examples/,dst=/mnt promabbix:local generateTemplate /mnt/minikube-alert-config.yaml -o /mnt/output.json
+
+# Validate configuration only
+docker run --mount type=bind,src=$(pwd)/examples/,dst=/mnt promabbix:local generateTemplate /mnt/minikube-alert-config.yaml --validate-only
 ```
 
 ## Prometheus (VictoriaMetrics) to Zabbix Integration (simplified version of docs to understand the gist)
@@ -49,7 +92,70 @@ Given these technologies have incompatible data model, we've come up with a foll
 * `ansible` based tooling transfers `YAML` definitions to live Zabbix instance (so you can track all the definitions in Git with IaaC principles)
   * Zabbix Templates are used behind-the-scenes, so the definitions can be maintained for a long time and kept in sync
 
-### Configuration definitions
+### Configuration Formats
+
+Promabbix supports two configuration formats:
+
+#### Unified Configuration Format (Recommended)
+
+The modern approach uses a single YAML file containing all configuration sections:
+
+```yaml
+# Single unified configuration file (e.g., service-alerts.yaml)
+groups:
+  - name: recording_rules
+    rules:
+      - record: elasticsearch_cluster_health_red
+        expr: sum(elasticsearch_cluster_health_status{color="red"}) by (cluster)
+  - name: alerting_rules  
+    rules:
+      - alert: elasticsearch_cluster_health_red_simple
+        expr: elasticsearch_cluster_health_red > 0
+        annotations:
+          description: "Elasticsearch cluster {{$labels.cluster}} is in RED state"
+        labels:
+          __zbx_priority: "AVERAGE"
+
+prometheus:
+  api:
+    url: "http://victoria-metrics:8428/api/v1/query"
+  labels_to_zabbix_macros:
+    - pattern: '\{\{(?:\s*)\$value(?:\s*)\}\}'
+      value: "{ITEM.VALUE1}"
+    - pattern: '\{\{(?:\s*)\$labels\.(?P<label>[a-zA-Z0-9\_\-]*)(?:\s*)\}\}'
+      value: "{#\\g<label>}"
+
+zabbix:
+  template: service_elasticsearch_cluster
+  name: "Template Module Prometheus Elasticsearch Cluster"
+  hosts:
+    - host_name: elasticsearch-cluster-prod
+      visible_name: "Service Elasticsearch Cluster PROD"
+      host_groups: ["Prometheus pseudo hosts", "Production hosts"]
+      link_templates: ["templ_module_promt_service_elasticsearch_cluster"]
+      macros:
+        - macro: "{$ES.CLUSTER.LLD.MATCHES}"
+          value: "^prod-(us|eu)$"
+  macros:
+    - macro: "{$ES.THRESHOLD}"
+      value: "1"
+      description: "Elasticsearch cluster health threshold"
+
+# Optional: Documentation for alerts
+wiki:
+  knowledgebase:
+    alerts:
+      alertings:
+        "elasticsearch_cluster_health_red_simple":
+          title: "Elasticsearch cluster in RED state" 
+          content: "See runbook for troubleshooting steps"
+```
+
+#### Legacy Multi-File Format (Backward Compatible)
+
+The legacy approach splits configuration across multiple files:
+
+##### Configuration definitions
 
 Typically each directory is related to a single service and contains 3 types of files.
 
@@ -217,22 +323,84 @@ Compatibility Zabbix 6.0+
 
 ## Development
 
-### Running Tests
+### Project Structure
 
-The project includes comprehensive unit tests for the template functionality.
+The project follows a modular architecture:
+
+```
+src/promabbix/
+├── cli/                    # CLI command implementations
+│   ├── generate_template.py   # generateTemplate command
+│   └── __init__.py
+├── core/                   # Core business logic modules
+│   ├── fs_utils.py            # File system operations (DataLoader, DataSaver)
+│   ├── template.py            # Jinja2 template rendering
+│   ├── validation.py          # Configuration validation
+│   ├── migration.py           # Legacy format migration
+│   └── data_utils.py          # Data validation utilities
+├── schemas/               # JSON/YAML schemas
+│   └── unified.yaml          # Unified configuration schema
+├── templates/             # Jinja2 templates
+│   └── prometheus_alert_rules_to_zbx_template.j2
+└── promabbix.py          # Main CLI entry point
+```
+
+### Local Development Setup
 
 ```bash
-# Install test dependencies
-pip install pytest pytest-cov pytest-mock
+# Create and activate virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
 
+# Install dependencies
+pip install -r requirements.txt -r requirements-dev.txt
+
+# Install additional type checking dependencies
+pip install mypy types-PyYAML
+
+# Run the CLI locally
+PYTHONPATH=src python -m promabbix.promabbix generateTemplate --help
+```
+
+### Running Tests
+
+The project includes comprehensive unit tests covering all functionality with 92% code coverage.
+
+```bash
 # Run all tests
-python3 -m pytest tests/ -v
+python -m pytest tests/ -v
 
 # Run tests with coverage
-python3 -m pytest tests/ -v --cov=src/promabbix --cov-report=term-missing
+python -m pytest tests/ -v --cov=src/promabbix --cov-report=term-missing
 
-# Run using the test runner script
-python3 run_tests.py
+# Run tests with coverage requirement (80% minimum)
+python -m pytest tests/ -v --cov-fail-under=80 --cov=src/promabbix --cov-report=term-missing --cov-report=xml
+
+# Run using the test runner script (recommended)
+python run_tests.py
 ```
+
+### Code Quality Checks
+
+The project maintains high code quality standards:
+
+```bash
+# Run linting
+flake8 src/ --count --max-complexity=10 --max-line-length=127 --statistics
+
+# Run type checking
+mypy src/ --ignore-missing-imports
+
+# All quality checks together (CI pipeline)
+python run_tests.py && flake8 src/ --count --max-complexity=10 --max-line-length=127 --statistics && mypy src/ --ignore-missing-imports
+```
+
+### Architecture Overview
+
+- **CLI Layer**: Click-based commands with proper argument parsing and help
+- **Business Logic**: Core modules for validation, template rendering, and file operations
+- **Dependency Injection**: Testable architecture with mockable dependencies
+- **Error Handling**: Rich console output with user-friendly error messages
+- **Type Safety**: Full type annotations and mypy compliance
 
 See [tests/README.md](tests/README.md) for detailed information about the test suite.
