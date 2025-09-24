@@ -119,10 +119,10 @@ jobs:
         
         echo "✅ Container validation successful!"
 
-    - name: Validate container help output with a different working dir
+    - name: Validate container help output with a wrapper and a different working dir
       run: |
         echo "Testing container help output with /tmp as a working directory..."
-        help_output=$(docker run --rm -w /tmp promabbix:ci -h)
+        help_output=$(docker run --rm -w /tmp --entrypoint /bin/bash promabbix:ci promabbix -h)
         echo "Container help output:"
         echo "$help_output"
         
