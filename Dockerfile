@@ -59,6 +59,7 @@ RUN useradd -u "${APP_UID}" -m -s /usr/sbin/nologin "${APP_USER}"
 
 WORKDIR /app
 
+COPY bin/promabbix /usr/bin
 COPY --from=builder /venv /venv
 COPY --from=builder /app /app
 
