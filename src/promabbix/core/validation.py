@@ -5,6 +5,7 @@
 #
 
 import json
+import yaml
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, cast
 from rich.console import Console
@@ -57,23 +58,26 @@ class ConfigValidator:
         """Get path to default built-in schema."""
         # Get the path to the schemas directory relative to this file
         current_dir = Path(__file__).parent.parent
-        return str(current_dir / "schemas" / "unified.json")
+        return str(current_dir / "schemas" / "unified.yaml")
 
     def load_schema(self) -> Dict[str, Any]:
-        """Load JSON schema from file."""
+        """Load schema from file (YAML or JSON)."""
         try:
             with open(self.schema_path, 'r') as f:
-                return cast(Dict[str, Any], json.load(f))
+                if self.schema_path.endswith('.yaml') or self.schema_path.endswith('.yml'):
+                    return cast(Dict[str, Any], yaml.safe_load(f))
+                else:
+                    return cast(Dict[str, Any], json.load(f))
         except FileNotFoundError:
             raise ValidationError(
                 f"Schema file not found: {self.schema_path}",
                 suggestions=["Ensure the unified schema file exists at the expected path"]
             )
-        except json.JSONDecodeError as e:
+        except (json.JSONDecodeError, yaml.YAMLError) as e:
             raise ValidationError(
-                f"Invalid JSON in schema file: {e}",
+                f"Invalid format in schema file: {e}",
                 path=self.schema_path,
-                suggestions=["Check the schema file for valid JSON syntax"]
+                suggestions=["Check the schema file for valid YAML/JSON syntax"]
             )
 
     def validate_config(self, config_data: Dict[str, Any]) -> None:

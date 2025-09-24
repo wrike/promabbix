@@ -19,13 +19,13 @@ class TestSchemaValidationExamples:
 
     @pytest.fixture
     def unified_schema(self):
-        """Load the unified JSON schema."""
-        schema_path = Path(__file__).parent.parent / "src" / "promabbix" / "schemas" / "unified.json"
+        """Load the unified schema (YAML format)."""
+        schema_path = Path(__file__).parent.parent / "src" / "promabbix" / "schemas" / "unified.yaml"
         if not schema_path.exists():
-            raise FileNotFoundError(f"unified.json schema not found at {schema_path}")
+            raise FileNotFoundError(f"unified.yaml schema not found at {schema_path}")
         
         with open(schema_path) as f:
-            return json.load(f)
+            return yaml.safe_load(f)
 
     @pytest.fixture
     def minimal_valid_config(self):
