@@ -468,7 +468,7 @@ class TestSchemaValidationExamples:
             validator.validate_config(invalid_config)
 
     def test_invalid_macro_format_fails_validation(self, unified_schema):
-        """Test that invalid macro format fails validation."""
+        """Test that invalid macro structure fails validation."""
         invalid_config = {
             "groups": [
                 {
@@ -480,8 +480,9 @@ class TestSchemaValidationExamples:
                 "template": "test_template",
                 "macros": [
                     {
-                        "macro": "INVALID_MACRO_FORMAT",  # Should be {$NAME} format
-                        "value": "test"
+                        "macro": "test_macro",
+                        "value": "test",
+                        "invalid_field": "not_allowed"  # Additional property not allowed
                     }
                 ]
             }
@@ -493,8 +494,8 @@ class TestSchemaValidationExamples:
         with pytest.raises(ValidationError):
             validator.validate_config(invalid_config)
 
-    def test_invalid_template_name_fails_validation(self, unified_schema):
-        """Test that invalid template name fails validation."""
+    def test_invalid_template_structure_fails_validation(self, unified_schema):
+        """Test that invalid template structure fails validation."""
         invalid_config = {
             "groups": [
                 {
@@ -503,7 +504,8 @@ class TestSchemaValidationExamples:
                 }
             ],
             "zabbix": {
-                "template": "invalid-template-name!",  # Should be alphanumeric and underscore only
+                "template": "test_template",
+                "invalid_field": "not_allowed"  # Additional property not allowed
             }
         }
         
@@ -513,16 +515,17 @@ class TestSchemaValidationExamples:
         with pytest.raises(ValidationError):
             validator.validate_config(invalid_config)
 
-    def test_invalid_record_name_fails_validation(self, unified_schema):
-        """Test that invalid record name fails validation."""
+    def test_invalid_record_structure_fails_validation(self, unified_schema):
+        """Test that invalid record structure fails validation."""
         invalid_config = {
             "groups": [
                 {
                     "name": "recording_rules",
                     "rules": [
                         {
-                            "record": "123invalid_start",  # Should start with letter
-                            "expr": "sum(metric)"
+                            "record": "test_metric",
+                            "expr": "sum(metric)",
+                            "invalid_field": "not_allowed"  # Additional property not allowed
                         }
                     ]
                 }

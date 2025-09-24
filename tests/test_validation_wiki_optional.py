@@ -126,6 +126,15 @@ class TestWikiSectionOptional:
         config_alerts_no_wiki = {
             "groups": [
                 {
+                    "name": "recording_rules",
+                    "rules": [
+                        {
+                            "record": "undocumented_alert",
+                            "expr": "metric_value"
+                        }
+                    ]
+                },
+                {
                     "name": "alerting_rules",
                     "rules": [
                         {
@@ -151,6 +160,19 @@ class TestWikiSectionOptional:
         # Config with alerts and wiki but missing documentation
         config_missing_docs = {
             "groups": [
+                {
+                    "name": "recording_rules",
+                    "rules": [
+                        {
+                            "record": "documented_alert",
+                            "expr": "metric_value"
+                        },
+                        {
+                            "record": "undocumented_alert",
+                            "expr": "other_metric_value"
+                        }
+                    ]
+                },
                 {
                     "name": "alerting_rules",
                     "rules": [
@@ -219,6 +241,15 @@ class TestWikiSectionOptional:
         config_templates_only = {
             "groups": [
                 {
+                    "name": "recording_rules",
+                    "rules": [
+                        {
+                            "record": "test_alert",
+                            "expr": "metric_value"
+                        }
+                    ]
+                },
+                {
                     "name": "alerting_rules",
                     "rules": [
                         {
@@ -255,6 +286,15 @@ class TestWikiSectionOptional:
         """Test that wiki section with only knowledgebase (no templates) is valid."""
         config_knowledgebase_only = {
             "groups": [
+                {
+                    "name": "recording_rules",
+                    "rules": [
+                        {
+                            "record": "test_alert",
+                            "expr": "metric_value"
+                        }
+                    ]
+                },
                 {
                     "name": "alerting_rules",
                     "rules": [
@@ -317,6 +357,23 @@ class TestWikiSectionOptional:
         config_partial_docs = {
             "groups": [
                 {
+                    "name": "recording_rules",
+                    "rules": [
+                        {
+                            "record": "alert_one",
+                            "expr": "metric1_value"
+                        },
+                        {
+                            "record": "alert_two",
+                            "expr": "metric2_value"
+                        },
+                        {
+                            "record": "alert_three",
+                            "expr": "metric3_value"
+                        }
+                    ]
+                },
+                {
                     "name": "alerting_rules",
                     "rules": [
                         {
@@ -368,6 +425,15 @@ class TestWikiSectionOptional:
         """Test that extra wiki documentation (for non-existent alerts) is allowed."""
         config_extra_docs = {
             "groups": [
+                {
+                    "name": "recording_rules",
+                    "rules": [
+                        {
+                            "record": "current_alert",
+                            "expr": "metric_value"
+                        }
+                    ]
+                },
                 {
                     "name": "alerting_rules",
                     "rules": [

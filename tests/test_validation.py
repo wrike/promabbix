@@ -351,6 +351,19 @@ class TestCrossSectionValidation:
         config = {
             "groups": [
                 {
+                    "name": "recording_rules",
+                    "rules": [
+                        {
+                            "record": "test_alert_1",
+                            "expr": "metric_value"
+                        },
+                        {
+                            "record": "test_alert_2", 
+                            "expr": "other_metric_value"
+                        }
+                    ]
+                },
+                {
                     "name": "alerting_rules",
                     "rules": [
                         {
@@ -396,6 +409,19 @@ class TestCrossSectionValidation:
         config = {
             "groups": [
                 {
+                    "name": "recording_rules",
+                    "rules": [
+                        {
+                            "record": "documented_alert",
+                            "expr": "metric_value"
+                        },
+                        {
+                            "record": "undocumented_alert", 
+                            "expr": "other_metric_value"
+                        }
+                    ]
+                },
+                {
                     "name": "alerting_rules",
                     "rules": [
                         {
@@ -440,6 +466,15 @@ class TestCrossSectionValidation:
         """Test validation allows extra wiki docs (docs without matching alerts)."""
         config = {
             "groups": [
+                {
+                    "name": "recording_rules",
+                    "rules": [
+                        {
+                            "record": "active_alert",
+                            "expr": "metric_value"
+                        }
+                    ]
+                },
                 {
                     "name": "alerting_rules", 
                     "rules": [

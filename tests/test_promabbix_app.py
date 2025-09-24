@@ -407,6 +407,15 @@ class TestPromabbixAppIntegration:
         alertrules_data = {
             "groups": [
                 {
+                    "name": "recording_rules",
+                    "rules": [
+                        {
+                            "record": "TestAlert",
+                            "expr": "up"
+                        }
+                    ]
+                },
+                {
                     "name": "alerting_rules",
                     "rules": [
                         {
