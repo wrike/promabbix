@@ -82,7 +82,7 @@ class ConfigValidator:
 
     def validate_config(self, config_data: Dict[str, Any]) -> None:
         """
-        Validate unified configuration against schema and cross-references.
+        Validate unified configuration against schema.
 
         Args:
             config_data: Parsed configuration dictionary
@@ -90,12 +90,8 @@ class ConfigValidator:
         Raises:
             ValidationError: If validation fails
         """
-        # First validate against JSON schema
+        # Validate against JSON schema
         self.validate_json_schema(config_data)
-
-        # Then perform cross-reference validation if both sections exist
-        if self.should_validate_cross_references(config_data):
-            self.validate_cross_references(config_data)
 
     def validate_json_schema(self, config_data: Dict[str, Any]) -> None:
         """
@@ -123,50 +119,6 @@ class ConfigValidator:
                     "Multiple validation errors found:\n" + "\n\n".join(error_messages),
                     suggestions=["Fix all validation errors to proceed"]
                 )
-
-    def validate_cross_references(self, config_data: Dict[str, Any]) -> None:
-        """
-        Validate cross-references between different sections of config.
-
-        Args:
-            config_data: Configuration to validate
-
-        Raises:
-            ValidationError: If cross-reference validation fails
-        """
-        cross_ref_validator = CrossReferenceValidator()
-        errors: List[ValidationError] = []
-
-        # Validate alert-wiki consistency
-        errors.extend(cross_ref_validator.validate_alert_wiki_consistency(config_data))
-
-        if errors:
-            if len(errors) == 1:
-                raise errors[0]
-            else:
-                error_messages = []
-                for i, error in enumerate(errors, 1):
-                    error_messages.append(f"Cross-reference error {i}: {error.format_message()}")
-
-                raise ValidationError(
-                    "Multiple cross-reference validation errors found:\n" + "\n\n".join(error_messages),
-                    suggestions=["Fix all cross-reference errors to proceed"]
-                )
-
-    def should_validate_cross_references(self, config: Dict[str, Any]) -> bool:
-        """
-        Determine if cross-reference validation should be performed.
-
-        Args:
-            config: Configuration to check
-
-        Returns:
-            True if cross-reference validation should run
-        """
-        # Only validate cross-references if both alerts and wiki exist
-        has_alerts = ConfigAnalyzer.has_alerting_rules(config)
-        has_wiki = ConfigAnalyzer.has_wiki_knowledgebase(config)
-        return has_alerts and has_wiki
 
 
 class SchemaValidator:

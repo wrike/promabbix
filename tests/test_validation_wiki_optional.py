@@ -156,7 +156,7 @@ class TestWikiSectionOptional:
         validator.validate_config(config_alerts_no_wiki)  # Should not raise exception
 
     def test_cross_reference_validation_when_both_present(self):
-        """Test that cross-reference validation runs when both alerts and wiki are present."""
+        """Test that cross-reference validation has been disabled even when both alerts and wiki are present."""
         # Config with alerts and wiki but missing documentation
         config_missing_docs = {
             "groups": [
@@ -207,10 +207,9 @@ class TestWikiSectionOptional:
             }
         }
         
-        # Should fail validation (missing cross-reference)
+        # Cross-validation has been disabled, so this should pass even with missing docs
         validator = ConfigValidator()
-        with pytest.raises(ValidationError):
-            validator.validate_config(config_missing_docs)
+        validator.validate_config(config_missing_docs)  # Should not raise exception
 
     def test_empty_wiki_section_allowed(self):
         """Test that empty wiki section is allowed."""
@@ -353,7 +352,7 @@ class TestWikiSectionOptional:
         validator.validate_config(minimal_config)  # Should not raise exception
 
     def test_cross_reference_validation_with_partial_wiki(self):
-        """Test cross-reference validation when wiki has some but not all alert documentation."""
+        """Test that partial wiki documentation is allowed (cross-validation disabled)."""
         config_partial_docs = {
             "groups": [
                 {
@@ -416,10 +415,9 @@ class TestWikiSectionOptional:
             }
         }
         
-        # Should fail validation (alert_two missing docs)
+        # Cross-validation has been disabled, so partial wiki docs are now allowed
         validator = ConfigValidator()
-        with pytest.raises(ValidationError):
-            validator.validate_config(config_partial_docs)
+        validator.validate_config(config_partial_docs)  # Should not raise exception
 
     def test_extra_wiki_documentation_allowed(self):
         """Test that extra wiki documentation (for non-existent alerts) is allowed."""

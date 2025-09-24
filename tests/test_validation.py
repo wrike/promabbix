@@ -405,7 +405,7 @@ class TestCrossSectionValidation:
         validator.validate_config(config)  # Should not raise any exception
 
     def test_alert_wiki_consistency_missing_docs(self):
-        """Test validation fails when alerts missing wiki documentation."""
+        """Test that alerts with missing wiki documentation now pass (cross-validation removed)."""
         config = {
             "groups": [
                 {
@@ -430,7 +430,7 @@ class TestCrossSectionValidation:
                             "annotations": {"summary": "Test"}
                         },
                         {
-                            "alert": "undocumented_alert",  # Missing from wiki
+                            "alert": "undocumented_alert",  # Missing from wiki but that's OK now
                             "expr": "metric > 2", 
                             "annotations": {"summary": "Test 2"}
                         }
@@ -448,19 +448,16 @@ class TestCrossSectionValidation:
                                 "title": "Documented Alert",
                                 "content": "This alert is documented"
                             }
-                            # undocumented_alert is missing
+                            # undocumented_alert is missing but cross-validation is disabled
                         }
                     }
                 }
             }
         }
         
-        # Should raise ValidationError for missing documentation
+        # Cross-validation has been removed, so this should pass even with missing docs
         validator = ConfigValidator()
-        with pytest.raises(ValidationError) as excinfo:
-            validator.validate_config(config)
-        assert "undocumented_alert" in str(excinfo.value)
-        assert "wiki documentation" in str(excinfo.value)
+        validator.validate_config(config)  # Should not raise exception
 
     def test_alert_wiki_consistency_extra_docs(self):
         """Test validation allows extra wiki docs (docs without matching alerts)."""
@@ -508,6 +505,52 @@ class TestCrossSectionValidation:
         }
         
         # Extra documentation should be allowed (for legacy/future alerts)
+        validator = ConfigValidator()
+        validator.validate_config(config)  # Should not raise exception
+
+    def test_alert_wiki_consistency_removed(self):
+        """Test that alert-wiki consistency validation has been removed."""
+        config = {
+            "groups": [
+                {
+                    "name": "recording_rules",
+                    "rules": [
+                        {
+                            "record": "undocumented_alert",
+                            "expr": "metric_value"
+                        }
+                    ]
+                },
+                {
+                    "name": "alerting_rules",
+                    "rules": [
+                        {
+                            "alert": "undocumented_alert",  # This alert has no wiki docs
+                            "expr": "metric > 1",
+                            "annotations": {"summary": "Test"}
+                        }
+                    ]
+                }
+            ],
+            "zabbix": {
+                "template": "test_template"
+            },
+            "wiki": {
+                "knowledgebase": {
+                    "alerts": {
+                        "alertings": {
+                            # Some other alert is documented, but not the one we have
+                            "other_alert": {
+                                "title": "Other Alert",
+                                "content": "Documentation for other alert"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        # Cross-validation has been removed, so this should pass even with missing docs
         validator = ConfigValidator()
         validator.validate_config(config)  # Should not raise exception
 
