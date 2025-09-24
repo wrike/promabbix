@@ -118,3 +118,20 @@ jobs:
         fi
         
         echo "✅ Container validation successful!"
+
+    - name: Validate container help output with a different working dir
+      run: |
+        echo "Testing container help output with /tmp as a working directory..."
+        help_output=$(docker run --rm -w /tmp promabbix:ci -h)
+        echo "Container help output:"
+        echo "$help_output"
+        
+        # Check for required keywords in help output
+        if echo "$help_output" | grep -q "Usage"; then
+          echo "✅ Found 'Usage' in help output"
+        else
+          echo "❌ 'Usage' not found in help output"
+          exit 1
+        fi
+        
+        echo "✅ Container validation successful!"
