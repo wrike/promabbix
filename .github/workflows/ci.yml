@@ -96,8 +96,25 @@ jobs:
       uses: docker/build-push-action@v5
       with:
         context: .
-        platforms: linux/amd64,linux/arm64
         push: false
         tags: promabbix:ci
         cache-from: type=gha
         cache-to: type=gha,mode=max
+        load: true
+
+    - name: Validate container help output
+      run: |
+        echo "Testing container help output..."
+        help_output=$(docker run --rm promabbix:ci -h)
+        echo "Container help output:"
+        echo "$help_output"
+        
+        # Check for required keywords in help output
+        if echo "$help_output" | grep -q "Usage"; then
+          echo "✅ Found 'Usage' in help output"
+        else
+          echo "❌ 'Usage' not found in help output"
+          exit 1
+        fi
+        
+        echo "✅ Container validation successful!"
