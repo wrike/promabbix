@@ -6,94 +6,87 @@ required:
   - zabbix
 additionalProperties: false
 properties:
+  additionalProperties: false
   groups:
     type: array
-    minItems: 1
-    maxItems: 2
-    items:
-      type: object
-      required:
-        - name
-        - rules
-      additionalProperties: false
-      properties:
-        name:
-          type: string
-          enum:
-            - recording_rules
-            - alerting_rules
-          description: 'Group type: recording_rules for Prometheus queries, alerting_rules for Zabbix triggers'
-        rules:
-          type: array
-          items:
-            oneOf:
-              - type: object
-                required:
-                  - record
-                  - expr
-                additionalProperties: false
-                properties:
-                  record:
+    items: false
+    prefixItems:
+      - type: object
+        additionalProperties: false
+        required: ["name", "rules"]
+        properties:
+          name:
+            type: string
+            enum: ['recording_rules']
+            description: |
+              Predefined key value *name* with enum values:
+              * recording_rules
+          rules:
+            type: array
+            items:
+              type: object
+              required: ["expr", "record"]
+              additionalProperties: false
+              properties:
+                expr:
+                  type: string
+                  description: PromQL expression to evaluate (recording_rules)
+                record:
+                  type: string
+                  description: |-
+                    Predefined key value *record*. A record should have a unique value for all record list.
+                    Available delimiter: `:`. The maximum value length is 160 chars.
+                    Example: wrike_log_events_total:syslog_level:3
+                  minLength: 3
+                  maxLength: 160
+                labels:
+                  type: object
+                  additionalProperties:
                     type: string
-                    minLength: 3
-                    maxLength: 160
-                    pattern: ^[a-zA-Z][a-zA-Z0-9_:]*$
-                    description: Unique recording rule name, used as metric name
-                  expr:
+                  description: Key-value pairs to attach metadata to alerts
+      - type: object
+        required: ["name", "rules"]
+        properties:
+          name:
+            type: string
+            description: |
+              Predefined key value *name* with enum values:
+              * alerting_rules
+            enum: ['alerting_rules']
+          rules:
+            type: array
+            items:
+              type: object
+              additionalProperties: false
+              required: ["alert", "expr"]
+              properties:
+                expr:
+                  type: string
+                  description: PromQL expression to evaluate (recording_rules) or Zabbix expression (alerting_rules)
+                alert:
+                  type: string
+                  description: Referring to recording_rules.record
+                  minLength: 3
+                  maxLength: 160
+                for:
+                  type: string
+                  description: Optional duration the expression must be true before firing the alert
+                labels:
+                  type: object
+                  additionalProperties:
                     type: string
-                    minLength: 1
-                    description: PromQL expression to evaluate
-                  labels:
-                    type: object
-                    additionalProperties:
+                  description: Key-value pairs to attach metadata to alerts
+                annotations:
+                  type: object
+                  additionalProperties: false
+                  description: Key-value pairs for alert description and summary
+                  properties:
+                    description:
                       type: string
-                    description: Additional labels to attach to the metric
-              - type: object
-                required:
-                  - alert
-                  - expr
-                additionalProperties: false
-                properties:
-                  alert:
-                    type: string
-                    minLength: 3
-                    maxLength: 160
-                    pattern: ^[a-zA-Z][a-zA-Z0-9_:]*$
-                    description: Alert name, should reference a recording rule
-                  expr:
-                    type: string
-                    minLength: 1
-                    description: Zabbix trigger expression
-                  for:
-                    type: string
-                    pattern: ^\d+[smhd]$
-                    description: Duration the expression must be true before firing (e.g., 5m, 1h)
-                  labels:
-                    type: object
-                    additionalProperties:
+                      description: Alert description
+                    summary:
                       type: string
-                    properties:
-                      __zbx_priority:
-                        type: string
-                        enum:
-                          - INFO
-                          - WARNING
-                          - AVERAGE
-                          - HIGH
-                          - DISASTER
-                        description: Zabbix trigger severity level
-                  annotations:
-                    type: object
-                    additionalProperties: false
-                    properties:
-                      description:
-                        type: string
-                        description: Detailed alert description with label templating
-                      summary:
-                        type: string
-                        description: Brief alert summary
-                    required:
-                      - summary
+                      description: Alert description
   prometheus:
     type: object
     additionalProperties: false

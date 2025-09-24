@@ -147,7 +147,7 @@ class TestSchemaValidationExamples:
                                 "formulaid": "A",
                                 "macro": "{#SERVICE}",
                                 "value": "{$SERVICE_LLD_MATCHES}",
-                                "operator": "matches"
+                                "operator": "MATCHES"
                             },
                             {
                                 "formulaid": "B", 
