@@ -500,8 +500,8 @@ class TestGenerateTemplateValidationIntegration:
     def test_help_includes_validation_options(self):
         """Test that help text includes validation-related options."""
         runner = CliRunner()
-        result = runner.invoke(cli, ['generateTemplate', '--help'])
         
+        result = runner.invoke(cli, ['generateTemplate', '--help'])
         assert result.exit_code == 0
         assert '--validate-only' in result.output
         assert 'validate the configuration without generating' in result.output

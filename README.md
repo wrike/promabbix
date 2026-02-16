@@ -11,6 +11,10 @@ This tooling allows you to keep you favourite monitoring tool Zabbix and have a 
 * Script to generate Zabbix Template from AlertManager-like definitions of Prometheus metrics
 * GitOps tooling allowing you to manage the vast majority of your Zabbix installation in a Infrastructure-as-a-Code (IaaC) pattern (To-be-done)
 
+## Zabbix Meetup Introduction
+
+[![Bringing Application Performance Metrics from Prometheus to Zabbix at Scale](http://img.youtube.com/vi/yoWpjnarZn4/0.jpg)](http://www.youtube.com/watch?v=yoWpjnarZn4 "Bringing Application Performance Metrics from Prometheus to Zabbix at Scale")
+
 ## Usage
 
 ### CLI Commands
