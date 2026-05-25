@@ -5,12 +5,15 @@
 #
 
 import json
+import re
 import yaml
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, cast
 from rich.console import Console
 import jsonschema
 from jsonschema import ValidationError as JsonSchemaValidationError
+
+ZABBIX_NAME_MAX_LEN = 255
 
 
 class ValidationError(Exception):
@@ -95,6 +98,19 @@ class ConfigValidator:
         # Validate against JSON schema
         self.validate_json_schema(config_data)
 
+        # Validate Zabbix name length constraints
+        cross_validator = CrossReferenceValidator()
+        length_errors = cross_validator.validate_summary_lengths(config_data)
+        if length_errors:
+            messages = "\n".join(str(e) for e in length_errors)
+            raise ValidationError(
+                f"Alert summary length violations:\n{messages}",
+                suggestions=[
+                    "Shorten the summary annotation",
+                    "Move diagnostic context to wiki.knowledgebase.alerts.alertings or the description annotation",
+                ]
+            )
+
     def validate_json_schema(self, config_data: Dict[str, Any]) -> None:
         """
         Validate configuration against JSON schema.
@@ -176,6 +192,45 @@ class CrossReferenceValidator:
 
         return errors
 
+    def validate_summary_lengths(self, config: Dict[str, Any]) -> List[ValidationError]:
+        """
+        Validate that all alert summaries fit within Zabbix's 255-character name limit.
+
+        Zabbix converts Prometheus label refs ({{$labels.X}} -> {#X}, {{$value}} -> {ITEM.VALUE1})
+        before storing as trigger names. This check applies those same substitutions.
+
+        Args:
+            config: Configuration to validate
+
+        Returns:
+            List of validation errors for summaries exceeding the limit
+        """
+        errors: List[ValidationError] = []
+        groups = config.get('groups', [])
+        for group in groups:
+            if group.get('name') != 'alerting_rules':
+                continue
+            for rule in group.get('rules', []):
+                alert_name = rule.get('alert', '<unknown>')
+                summary = rule.get('annotations', {}).get('summary', '')
+                if not summary:
+                    continue
+                zabbix_name = ConfigAnalyzer.to_zabbix_name(summary)
+                over = len(zabbix_name) - ZABBIX_NAME_MAX_LEN
+                if over > 0:
+                    errors.append(ValidationError(
+                        f"Alert '{alert_name}': summary is {len(zabbix_name)} chars "
+                        f"({over} over the {ZABBIX_NAME_MAX_LEN}-char Zabbix limit) "
+                        f"after label substitution",
+                        path=f"groups[alerting_rules].{alert_name}.annotations.summary",
+                        suggestions=[
+                            f"Shorten by at least {over} characters",
+                            "Move diagnostic context to wiki.knowledgebase.alerts.alertings "
+                            "or to the description annotation",
+                        ]
+                    ))
+        return errors
+
     def should_validate_wiki_consistency(self, config: Dict[str, Any]) -> bool:
         """
         Check if wiki consistency validation should be performed.
@@ -255,6 +310,18 @@ class ConfigAnalyzer:
         alertings = alerts.get('alertings', {})
 
         return bool(alertings)
+
+    @staticmethod
+    def to_zabbix_name(summary: str) -> str:
+        """
+        Apply the same label substitutions that promabbix applies when generating Zabbix trigger names.
+
+        Prometheus {{$labels.X}} -> {#X_UPPERCASE}
+        Prometheus {{$value}}    -> {ITEM.VALUE1}
+        """
+        result = re.sub(r'\{\{\$labels\.(\w+)\}\}', lambda m: '{#' + m.group(1).upper() + '}', summary)
+        result = re.sub(r'\{\{\$value\}\}', '{ITEM.VALUE1}', result)
+        return result
 
     @staticmethod
     def has_alerting_rules(config: Dict[str, Any]) -> bool:
