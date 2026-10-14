@@ -13,6 +13,7 @@ the position of the object in the input.
 """
 
 import copy
+import hashlib
 import json
 import re
 import sys
@@ -25,12 +26,28 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from promabbix.core.template import (  # noqa: E402
-    Render, STABLE_UUID_NAMESPACE, stable_uuid, to_uuid4,
+    Render, stable_uuid, to_uuid4,
 )
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "src" / "promabbix" / "templates"
 TEMPLATE_NAME = "prometheus_alert_rules_to_zbx_template.j2"
 HEX32 = re.compile(r"^[0-9a-f]{32}$")
+
+
+def zabbix_validate_uuid(value: str) -> bool:
+    """Python port of Zabbix CApiInputValidator::validateUuid (32 hex, version 4, RFC 4122 variant)."""
+    if not re.fullmatch(r"[0-9a-f]{32}", value):
+        return False
+    raw = bytes.fromhex(value)
+    return (raw[6] & 0xF0) == 0x40 and (raw[8] & 0xC0) == 0x80
+
+
+def independent_stable_uuid(template: str, kind: str, key: str) -> str:
+    """Reference implementation: md5 of the joined identity with version/variant bits set by hand."""
+    raw = bytearray(hashlib.md5("\x1f".join((template, kind, key)).encode("utf-8")).digest())
+    raw[6] = (raw[6] & 0x0F) | 0x40
+    raw[8] = (raw[8] & 0x3F) | 0x80
+    return raw.hex()
 
 
 def make_config() -> Dict[str, Any]:
@@ -155,12 +172,47 @@ class TestStableUuidFilter:
     def test_every_identity_component_matters(self, a: Any, b: Any) -> None:
         assert stable_uuid(*a) != stable_uuid(*b)
 
-    def test_known_value_pins_namespace_and_algorithm(self) -> None:
-        # Guards against accidental namespace / algorithm changes, which would re-key
-        # every object of every template in production.
-        assert stable_uuid("templ_module_promt_node_exporter", "item", "node_cpu[utilization,percent]") == \
-            "8a5345a61b37491885224b6d1fc535bc"
-        assert str(STABLE_UUID_NAMESPACE) == "31dd64a2-6386-5080-b4c6-9bb65261c0d4"
+    def test_known_value_pins_algorithm(self) -> None:
+        # Guards against accidental formula changes, which would re-key every object of
+        # every template already pushed to Zabbix. The expected value is computed
+        # independently of to_uuid4 (hashlib.md5 + manual version/variant bits).
+        identity = ("templ_module_promt_node_exporter", "item", "node_cpu[utilization,percent]")
+        assert independent_stable_uuid(*identity) == "cf4bb750868e4019ab33dd9c59fb494f"
+        assert stable_uuid(*identity) == "cf4bb750868e4019ab33dd9c59fb494f"
+
+    def test_matches_independent_reference_implementation(self) -> None:
+        for identity in [("tpl", "item", "key"), ("", "", ""), ("t", "trigger_prototype", "Zaplnění disku")]:
+            assert stable_uuid(*identity) == independent_stable_uuid(*identity)
+
+    def test_equals_to_uuid4_of_joined_identity(self) -> None:
+        """stable_uuid and the template-level to_uuid4 must not drift apart."""
+        for identity in [("tpl", "item", "key"), ("a|b", "c", "d"), ("", "", ""), ("tpl", "item", "Zaplnění")]:
+            assert stable_uuid(*identity) == to_uuid4("\x1f".join(identity)).replace("-", "")
+
+    def test_to_uuid4_sets_version_nibble_and_variant_bits(self) -> None:
+        # Inspect the raw bytes, not uuid.UUID's own properties.
+        for sample in ["", "a", "test", "тест", "x" * 1000]:
+            raw = bytes.fromhex(to_uuid4(sample).replace("-", ""))
+            assert (raw[6] & 0xF0) == 0x40
+            assert (raw[8] & 0xC0) == 0x80
+
+    def test_passes_zabbix_validator_port(self) -> None:
+        assert zabbix_validate_uuid(stable_uuid("tpl", "item", "key"))
+        assert not zabbix_validate_uuid(uuid.uuid1().hex)
+        assert not zabbix_validate_uuid(uuid.uuid4().hex.upper())
+        assert not zabbix_validate_uuid(hashlib.md5(b"x").hexdigest())  # raw md5: version/variant unset
+
+    def test_large_sample_has_no_collisions_and_all_valid(self) -> None:
+        values = [stable_uuid("templ_module_promt_node_exporter", "trigger_prototype", f"key-{i}")
+                  for i in range(10000)]
+        assert len(set(values)) == 10000
+        assert all(zabbix_validate_uuid(v) for v in values)
+
+    def test_input_order_does_not_change_uuids(self) -> None:
+        identities = [("tpl", kind, f"key{i}") for i in range(50) for kind in ("item", "discovery_rule")]
+        forward = {i: stable_uuid(*i) for i in identities}
+        backward = {i: stable_uuid(*i) for i in reversed(identities)}
+        assert forward == backward
 
     def test_unicode_and_empty_keys(self) -> None:
         assert HEX32.match(stable_uuid("tpl", "trigger_prototype", "Zaplnění disku"))
@@ -214,6 +266,7 @@ class TestRenderDeterminism:
         for u in iter_uuids(get_template(render_json(make_config()))):
             parsed = uuid.UUID(hex=u)
             assert parsed.version == 4 and parsed.variant == uuid.RFC_4122
+            assert zabbix_validate_uuid(u)
 
     def test_template_uuid_is_derived_from_full_name_as_before(self) -> None:
         """The template uuid was already deterministic; it must stay compatible with live Zabbix."""
