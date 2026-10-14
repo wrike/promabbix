@@ -559,14 +559,35 @@ class TestRealisticTemplate:
         # drift: macro value and memory trigger expression
         changed = {c.path.split(" > ")[-1]: c for c in diff.changed}
         macro = changed['macro "{$NODE.MEM.UTIL.MAX}"']
-        assert (macro.fields[0].old, macro.fields[0].new) == ("80", "85")
-        expr = [c for p, c in changed.items() if p.startswith('trigger_prototype "Memory')][0]
-        assert expr.fields[0].field == "expression"
-        assert expr.fields[0].old.endswith(">{$NODE.MEM.UTIL.MAX}")
-        assert expr.fields[0].new.endswith(">={$NODE.MEM.UTIL.MAX}")
+        assert {f.field: (f.old, f.new) for f in macro.fields} == {"value": ("80", "85")}
+        trig = [c for p, c in changed.items() if p.startswith('trigger_prototype "Memory')][0]
+        by_field = {f.field: f for f in trig.fields}
+        # exactly the intended drift: wiki description and wiki_page_tag (PM-4) match on both sides
+        assert set(by_field) == {"expression"}
+        assert by_field["expression"].old.endswith(">{$NODE.MEM.UTIL.MAX}")
+        assert by_field["expression"].new.endswith(">={$NODE.MEM.UTIL.MAX}")
         # the CPU trigger, items and tags are the same in both
         assert not any('CPU' in p for p in changed)
+        assert len(changed) == 2
         assert diff.added == []
+
+    def test_wiki_description_and_tag_drift_is_reported(self, rendered_desired: Dict[str, Any],
+                                                        hand_made_live: Dict[str, Any]) -> None:
+        # live from before PM-4: no runbook description, no wiki_page_tag
+        for rule in tpl_of(hand_made_live)["discovery_rules"]:
+            for trig in rule["trigger_prototypes"]:
+                if trig["name"].startswith("CPU"):
+                    trig.pop("description", None)
+                    trig["tags"] = [t for t in trig["tags"] if t["tag"] != "wiki_page_tag"]
+        diff = diff_template(hand_made_live, rendered_desired)
+        cpu = [c for c in diff.changed if c.path.endswith('trigger_prototype "CPU utilization on {#INSTANCE} '
+                                                          'above {$NODE.CPU.UTIL.MAX}%"')]
+        assert len(cpu) == 1
+        by_field = {f.field: f for f in cpu[0].fields}
+        assert by_field["description"].old is None
+        assert by_field["description"].new == "Wiki: {$WIKI.TAG.URL}node_cpu_utilization_percent"
+        assert "wiki_page_tag" in json.dumps(by_field["tags"].new)
+        assert "wiki_page_tag" not in json.dumps(by_field["tags"].old)
 
     def test_hand_made_live_render(self, rendered_desired: Dict[str, Any], hand_made_live: Dict[str, Any]) -> None:
         text = diff_template(hand_made_live, rendered_desired).render()

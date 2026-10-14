@@ -198,7 +198,7 @@
                 "name": "Memory utilization on {#INSTANCE} above {$NODE.MEM.UTIL.MAX}%",
                 "opdata": "instance {#INSTANCE} value {ITEM.VALUE1}",
                 "priority": "AVERAGE",
-                "description": "",
+                "description": "Wiki: {$WIKI.TAG.URL}node_memory_utilization_percent",
                 "manual_close": "YES",
                 "tags": [
                   {
@@ -207,6 +207,10 @@
                   },
                   {
                     "tag": "alert",
+                    "value": "node_memory_utilization_percent"
+                  },
+                  {
+                    "tag": "wiki_page_tag",
                     "value": "node_memory_utilization_percent"
                   }
                 ]
@@ -311,7 +315,7 @@
                 "name": "CPU utilization on {#INSTANCE} above {$NODE.CPU.UTIL.MAX}%",
                 "opdata": "instance {#INSTANCE} value {ITEM.VALUE1}",
                 "priority": "WARNING",
-                "description": "",
+                "description": "Wiki: {$WIKI.TAG.URL}node_cpu_utilization_percent",
                 "manual_close": "YES",
                 "tags": [
                   {
@@ -324,6 +328,10 @@
                   },
                   {
                     "tag": "alert",
+                    "value": "node_cpu_utilization_percent"
+                  },
+                  {
+                    "tag": "wiki_page_tag",
                     "value": "node_cpu_utilization_percent"
                   }
                 ]
