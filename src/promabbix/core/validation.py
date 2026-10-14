@@ -5,12 +5,30 @@
 #
 
 import json
+import re
 import yaml
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, cast
 from rich.console import Console
 import jsonschema
 from jsonschema import ValidationError as JsonSchemaValidationError
+
+ZABBIX_NAME_MAX_LEN = 255
+
+# __zbx_* tags the template pastes into the generated JSON without escaping them,
+# so the parsed value must already be valid inside a JSON string literal.
+RAW_EMITTED_ZBX_TAGS = frozenset({
+    '__zbx_trigger_expression',
+    '__zbx_trigger_description',
+    '__zbx_item_url',
+    '__zbx_item_delay',
+    '__zbx_item_timeout',
+    '__zbx_item_lifetime',
+    '__zbx_history',
+    '__zbx_trends',
+    '__zbx_item_units',
+    '__zbx_priority',
+})
 
 
 class ValidationError(Exception):
@@ -95,6 +113,31 @@ class ConfigValidator:
         # Validate against JSON schema
         self.validate_json_schema(config_data)
 
+        # Validate Zabbix name length constraints
+        cross_validator = CrossReferenceValidator()
+        length_errors = cross_validator.validate_summary_lengths(config_data)
+        if length_errors:
+            messages = "\n".join(str(e) for e in length_errors)
+            raise ValidationError(
+                f"Alert summary length violations:\n{messages}",
+                suggestions=[
+                    "Shorten the summary annotation",
+                    "Move diagnostic context to wiki.knowledgebase.alerts.alertings or the description annotation",
+                ]
+            )
+
+        # Validate escaping of __zbx_* tags that the template emits verbatim
+        escaping_errors = cross_validator.validate_zabbix_tag_escaping(config_data)
+        if escaping_errors:
+            messages = "\n".join(str(e) for e in escaping_errors)
+            raise ValidationError(
+                f"Unescaped __zbx_* tag values:\n{messages}",
+                suggestions=[
+                    "In a YAML double-quoted string write \\\\\\\" for a literal \\\" (a plain \\\" parses to a bare \")",
+                    "Only __zbx_* labels need this; expr and annotations are escaped by the template",
+                ]
+            )
+
     def validate_json_schema(self, config_data: Dict[str, Any]) -> None:
         """
         Validate configuration against JSON schema.
@@ -176,6 +219,96 @@ class CrossReferenceValidator:
 
         return errors
 
+    def validate_summary_lengths(self, config: Dict[str, Any]) -> List[ValidationError]:
+        """
+        Validate that all alert summaries fit within Zabbix's 255-character name limit.
+
+        Zabbix converts Prometheus label refs ({{$labels.X}} -> {#X}, {{$value}} -> {ITEM.VALUE1})
+        before storing as trigger names. This check applies those same substitutions.
+
+        Args:
+            config: Configuration to validate
+
+        Returns:
+            List of validation errors for summaries exceeding the limit
+        """
+        errors: List[ValidationError] = []
+        groups = config.get('groups', [])
+        for group in groups:
+            if group.get('name') != 'alerting_rules':
+                continue
+            for rule in group.get('rules') or []:
+                alert_name = rule.get('alert', '<unknown>')
+                summary = (rule.get('annotations') or {}).get('summary', '')
+                if not summary:
+                    continue
+                zabbix_name = ConfigAnalyzer.to_zabbix_name(summary)
+                over = len(zabbix_name) - ZABBIX_NAME_MAX_LEN
+                if over > 0:
+                    errors.append(ValidationError(
+                        f"Alert '{alert_name}': summary is {len(zabbix_name)} chars "
+                        f"({over} over the {ZABBIX_NAME_MAX_LEN}-char Zabbix limit) "
+                        f"after label substitution",
+                        path=f"groups[alerting_rules].{alert_name}.annotations.summary",
+                        suggestions=[
+                            f"Shorten by at least {over} characters",
+                            "Move diagnostic context to wiki.knowledgebase.alerts.alertings "
+                            "or to the description annotation",
+                        ]
+                    ))
+        return errors
+
+    def validate_zabbix_tag_escaping(self, config: Dict[str, Any]) -> List[ValidationError]:
+        """
+        Validate that __zbx_* tags emitted verbatim by the template are valid JSON string content.
+
+        The template JSON-escapes expr and the annotations itself, but pastes the values of
+        RAW_EMITTED_ZBX_TAGS into the output unescaped. A bare '"' (or a stray backslash, or a raw
+        newline) in the parsed value therefore produces invalid JSON or a broken Zabbix expression.
+        In a YAML double-quoted string a literal \\" must be written as \\\\\\".
+
+        Args:
+            config: Configuration to validate
+
+        Returns:
+            List of validation errors, one per offending tag value
+        """
+        errors: List[ValidationError] = []
+
+        zabbix_labels = (config.get('zabbix') or {}).get('labels')
+        errors.extend(self._check_tag_escaping(zabbix_labels, "zabbix.labels"))
+
+        for group in config.get('groups') or []:
+            group_name = group.get('name')
+            for rule in group.get('rules') or []:
+                rule_name = rule.get('alert') or rule.get('record') or '<unknown>'
+                errors.extend(self._check_tag_escaping(
+                    rule.get('labels'), f"groups[{group_name}].{rule_name}.labels"))
+        return errors
+
+    @staticmethod
+    def _check_tag_escaping(labels: Any, path_prefix: str) -> List[ValidationError]:
+        """Check the raw-emitted __zbx_* values of one labels mapping."""
+        errors: List[ValidationError] = []
+        if not isinstance(labels, dict):
+            return errors
+        for tag, value in labels.items():
+            if tag not in RAW_EMITTED_ZBX_TAGS or not isinstance(value, str):
+                continue
+            try:
+                json.loads('"' + value + '"')
+            except ValueError:
+                errors.append(ValidationError(
+                    f"{path_prefix}.{tag} is not valid JSON string content after YAML parsing "
+                    f"(bare '\"', stray backslash or raw control character): {value!r}",
+                    path=f"{path_prefix}.{tag}",
+                    suggestions=[
+                        "Escape quotes so the parsed value contains \\\" "
+                        "(YAML double-quoted: \\\\\\\"; YAML single-quoted: \\\")",
+                    ]
+                ))
+        return errors
+
     def should_validate_wiki_consistency(self, config: Dict[str, Any]) -> bool:
         """
         Check if wiki consistency validation should be performed.
@@ -255,6 +388,18 @@ class ConfigAnalyzer:
         alertings = alerts.get('alertings', {})
 
         return bool(alertings)
+
+    @staticmethod
+    def to_zabbix_name(summary: str) -> str:
+        """
+        Apply the same label substitutions that promabbix applies when generating Zabbix trigger names.
+
+        Prometheus {{$labels.X}} -> {#X_UPPERCASE}
+        Prometheus {{$value}}    -> {ITEM.VALUE1}
+        """
+        result = re.sub(r'\{\{\$labels\.(\w+)\}\}', lambda m: '{#' + m.group(1).upper() + '}', summary)
+        result = re.sub(r'\{\{\$value\}\}', '{ITEM.VALUE1}', result)
+        return result
 
     @staticmethod
     def has_alerting_rules(config: Dict[str, Any]) -> bool:

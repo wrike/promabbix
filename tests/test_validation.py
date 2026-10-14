@@ -13,7 +13,10 @@ import sys
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from promabbix.core.validation import ConfigValidator, ValidationError
+from promabbix.core.validation import (
+    ConfigValidator, CrossReferenceValidator, ConfigAnalyzer, ValidationError, ZABBIX_NAME_MAX_LEN,
+    RAW_EMITTED_ZBX_TAGS
+)
 
 
 class TestConfigValidator:
@@ -584,6 +587,197 @@ class TestCrossSectionValidation:
         # Should pass validation (template reference validation not implemented in Phase 1)
         validator = ConfigValidator()
         validator.validate_config(config)  # Should not raise any exception
+
+
+class TestSummaryLengthValidation:
+    """Test that alert summaries are validated against Zabbix's 255-char name limit."""
+
+    def _make_config(self, summary: str) -> dict:
+        return {
+            "groups": [
+                {
+                    "name": "alerting_rules",
+                    "rules": [{"alert": "test_alert", "expr": "metric > 0",
+                               "annotations": {"summary": summary}}]
+                }
+            ],
+            "zabbix": {"template": "test_template"}
+        }
+
+    # --- to_zabbix_name conversion ---
+
+    def test_to_zabbix_name_labels(self):
+        """Labels refs are uppercased and wrapped in {#...}."""
+        result = ConfigAnalyzer.to_zabbix_name("alert for {{$labels.k8s_cluster}}")
+        assert result == "alert for {#K8S_CLUSTER}"
+
+    def test_to_zabbix_name_value(self):
+        """{{$value}} is replaced with {ITEM.VALUE1}."""
+        result = ConfigAnalyzer.to_zabbix_name("value is {{$value}}/s")
+        assert result == "value is {ITEM.VALUE1}/s"
+
+    def test_to_zabbix_name_multiple_substitutions(self):
+        """Multiple labels and value refs are all substituted."""
+        raw = "{{$labels.pod}} in {{$labels.k8s_cluster}}: {{$value}}/s"
+        result = ConfigAnalyzer.to_zabbix_name(raw)
+        assert result == "{#POD} in {#K8S_CLUSTER}: {ITEM.VALUE1}/s"
+
+    def test_to_zabbix_name_no_refs(self):
+        """Strings with no refs pass through unchanged."""
+        raw = "Disk usage over threshold"
+        assert ConfigAnalyzer.to_zabbix_name(raw) == raw
+
+    def test_to_zabbix_name_zabbix_macros_untouched(self):
+        """Existing Zabbix macros like {$FOO} are not modified."""
+        raw = "rate {{$value}}/s (threshold {$MY.MACRO})"
+        result = ConfigAnalyzer.to_zabbix_name(raw)
+        assert result == "rate {ITEM.VALUE1}/s (threshold {$MY.MACRO})"
+
+    # --- validate_summary_lengths ---
+
+    def test_short_summary_passes(self):
+        """A summary well under 255 chars after substitution passes."""
+        validator = CrossReferenceValidator()
+        config = self._make_config("{{$labels.pod}} in {{$labels.k8s_cluster}}: metric > 0")
+        errors = validator.validate_summary_lengths(config)
+        assert errors == []
+
+    def test_exactly_255_passes(self):
+        """A summary that is exactly 255 chars after substitution passes."""
+        # Build a summary that produces exactly 255 chars after substitution
+        # {#K8S_CLUSTER} is 14 chars; base text padded to 255
+        base = "A" * (255 - 14 - 4)  # 4 = len(" in ") + extras
+        raw = f"{base} in {{{{$labels.k8s_cluster}}}}"
+        zabbix = ConfigAnalyzer.to_zabbix_name(raw)
+        assert len(zabbix) == 255
+
+        validator = CrossReferenceValidator()
+        config = self._make_config(raw)
+        errors = validator.validate_summary_lengths(config)
+        assert errors == []
+
+    def test_256_chars_fails(self):
+        """A summary that is 256 chars after substitution fails."""
+        # {#K8S_CLUSTER} is 14 chars
+        base = "A" * (256 - 14 - 4)
+        raw = f"{base} in {{{{$labels.k8s_cluster}}}}"
+        zabbix = ConfigAnalyzer.to_zabbix_name(raw)
+        assert len(zabbix) == 256
+
+        validator = CrossReferenceValidator()
+        config = self._make_config(raw)
+        errors = validator.validate_summary_lengths(config)
+        assert len(errors) == 1
+        assert "test_alert" in str(errors[0])
+        assert "256" in str(errors[0])
+
+    def test_real_world_too_long_summary(self):
+        """Reproduces the real-world istio SDS auth failure summary that caused build #2782."""
+        summary = (
+            "istiod {{$labels.pod}} in {{$labels.k8s_cluster}} is rejecting SDS auth at "
+            "{{$value}}/s (threshold {$ISTIO.SDS.AUTH.FAIL.RATE:\"{{$labels.k8s_cluster}}\"}/s, "
+            "last 15m). Most often: a long-lived sidecar pod with an expired bound "
+            "service-account token. Quick remediation: restart istio-gateways."
+        )
+        zabbix = ConfigAnalyzer.to_zabbix_name(summary)
+        assert len(zabbix) > ZABBIX_NAME_MAX_LEN  # confirm it's over limit
+
+        validator = CrossReferenceValidator()
+        config = self._make_config(summary)
+        errors = validator.validate_summary_lengths(config)
+        assert len(errors) == 1
+        assert "test_alert" in str(errors[0])
+
+    def test_multiple_alerts_multiple_violations(self):
+        """Multiple over-limit summaries each produce their own error."""
+        long = "X" * 260  # plain text, no substitution needed
+        config = {
+            "groups": [
+                {
+                    "name": "alerting_rules",
+                    "rules": [
+                        {"alert": "alert_a", "expr": "m > 0", "annotations": {"summary": long}},
+                        {"alert": "alert_b", "expr": "m > 1", "annotations": {"summary": long}},
+                        {"alert": "alert_ok", "expr": "m > 2", "annotations": {"summary": "short"}},
+                    ]
+                }
+            ],
+            "zabbix": {"template": "t"}
+        }
+        validator = CrossReferenceValidator()
+        errors = validator.validate_summary_lengths(config)
+        assert len(errors) == 2
+        alert_names = {str(e) for e in errors}
+        assert any("alert_a" in e for e in alert_names)
+        assert any("alert_b" in e for e in alert_names)
+
+    def test_missing_summary_skipped(self):
+        """Alerts without a summary annotation are skipped silently."""
+        config = {
+            "groups": [
+                {
+                    "name": "alerting_rules",
+                    "rules": [{"alert": "no_summary", "expr": "m > 0"}]
+                }
+            ],
+            "zabbix": {"template": "t"}
+        }
+        validator = CrossReferenceValidator()
+        errors = validator.validate_summary_lengths(config)
+        assert errors == []
+
+    def test_recording_rules_skipped(self):
+        """recording_rules group entries are not checked for summary length."""
+        config = {
+            "groups": [
+                {
+                    "name": "recording_rules",
+                    "rules": [{"record": "rec", "expr": "sum(metric)"}]
+                }
+            ],
+            "zabbix": {"template": "t"}
+        }
+        validator = CrossReferenceValidator()
+        errors = validator.validate_summary_lengths(config)
+        assert errors == []
+
+    # --- integrate into ConfigValidator.validate_config ---
+
+    def test_validate_config_raises_on_long_summary(self):
+        """ConfigValidator.validate_config raises ValidationError for too-long summaries."""
+        long = "X" * 260
+        config = {
+            "groups": [
+                {"name": "recording_rules", "rules": [{"record": "test_metric", "expr": "sum(metric)"}]},
+                {
+                    "name": "alerting_rules",
+                    "rules": [{"alert": "bad_alert", "expr": "r > 0",
+                               "annotations": {"summary": long}}]
+                }
+            ],
+            "zabbix": {"template": "t"}
+        }
+        validator = ConfigValidator()
+        with pytest.raises(ValidationError) as exc_info:
+            validator.validate_config(config)
+        assert "bad_alert" in str(exc_info.value)
+        assert "255" in str(exc_info.value)
+
+    def test_validate_config_passes_short_summary(self):
+        """ConfigValidator.validate_config passes for short summaries."""
+        config = {
+            "groups": [
+                {"name": "recording_rules", "rules": [{"record": "test_metric", "expr": "sum(metric)"}]},
+                {
+                    "name": "alerting_rules",
+                    "rules": [{"alert": "ok_alert", "expr": "r > 0",
+                               "annotations": {"summary": "Short summary"}}]
+                }
+            ],
+            "zabbix": {"template": "t"}
+        }
+        validator = ConfigValidator()
+        validator.validate_config(config)  # must not raise
 
 
 class TestSchemaValidation:
@@ -1160,3 +1354,130 @@ class TestValidationErrorMessages:
             validator.validate_config(invalid_config)
         error_msg = str(excinfo.value).lower()
         assert "zabbix" in error_msg  # Should report validation error
+
+class TestZabbixTagEscapingValidation:
+    """Test that __zbx_* tags the template emits verbatim are valid JSON string content."""
+
+    def _make_config(self, labels: dict, zabbix_labels: dict = None) -> dict:
+        zabbix = {"template": "test_template"}
+        if zabbix_labels is not None:
+            zabbix["labels"] = zabbix_labels
+        return {
+            "groups": [
+                {
+                    "name": "alerting_rules",
+                    "rules": [{"alert": "test_alert", "expr": "metric > 0", "labels": labels}]
+                }
+            ],
+            "zabbix": zabbix
+        }
+
+    # --- accepted values ---
+
+    def test_escaped_quotes_pass(self):
+        """\\\" in the parsed value (YAML double-quoted: \\\\\\\") is valid JSON string content."""
+        parsed = yaml.safe_load(
+            r'''x: "min({{item_full_key}},{$A.TIME})>{$A.RATE:\\\"{{$labels.k8s_cluster}}\\\"}"''')["x"]
+        assert '\\"' in parsed
+        config = self._make_config({"__zbx_trigger_expression": parsed})
+        assert CrossReferenceValidator().validate_zabbix_tag_escaping(config) == []
+
+    def test_no_quotes_pass(self):
+        """A value with no quotes at all passes."""
+        config = self._make_config({"__zbx_trigger_expression": "min({{item_full_key}},{$A.TIME})>{$A.RATE}"})
+        assert CrossReferenceValidator().validate_zabbix_tag_escaping(config) == []
+
+    def test_plain_values_pass(self):
+        """Typical simple __zbx_* values pass."""
+        config = self._make_config({"__zbx_priority": "HIGH", "__zbx_item_delay": "1m", "__zbx_history": "7d"})
+        assert CrossReferenceValidator().validate_zabbix_tag_escaping(config) == []
+
+    def test_no_labels_pass(self):
+        """Rules without labels are ignored."""
+        config = {"groups": [{"name": "alerting_rules", "rules": [{"alert": "a", "expr": "m > 0"}]}]}
+        assert CrossReferenceValidator().validate_zabbix_tag_escaping(config) == []
+
+    # --- rejected values ---
+
+    def test_bare_quote_fails(self):
+        """Reproduces the real-world case: YAML \\\" parses to a bare quote that breaks the import."""
+        parsed = yaml.safe_load(
+            r'''x: "min({{item_full_key}},{$A.TIME})>{$A.RATE:\"{{$labels.k8s_cluster}}\"}"''')["x"]
+        assert '\\' not in parsed
+        config = self._make_config({"__zbx_trigger_expression": parsed})
+        errors = CrossReferenceValidator().validate_zabbix_tag_escaping(config)
+        assert len(errors) == 1
+        assert "test_alert" in str(errors[0])
+        assert "__zbx_trigger_expression" in str(errors[0])
+        assert errors[0].path == "groups[alerting_rules].test_alert.labels.__zbx_trigger_expression"
+
+    def test_stray_backslash_fails(self):
+        """A backslash that is not a valid JSON escape fails."""
+        config = self._make_config({"__zbx_trigger_description": "path C:\\temp\\x"})
+        assert len(CrossReferenceValidator().validate_zabbix_tag_escaping(config)) == 1
+
+    def test_raw_newline_fails(self):
+        """A raw newline inside the value fails."""
+        config = self._make_config({"__zbx_trigger_description": "line one\nline two"})
+        assert len(CrossReferenceValidator().validate_zabbix_tag_escaping(config)) == 1
+
+    def test_every_raw_emitted_tag_is_checked(self):
+        """All raw-emitted tags are validated, not just the trigger expression."""
+        for tag in RAW_EMITTED_ZBX_TAGS:
+            config = self._make_config({tag: 'bad "quote"'})
+            errors = CrossReferenceValidator().validate_zabbix_tag_escaping(config)
+            assert len(errors) == 1, tag
+            assert tag in str(errors[0])
+
+    def test_zabbix_labels_checked(self):
+        """Tags set in zabbix.labels are validated too."""
+        config = self._make_config({}, zabbix_labels={"__zbx_item_url": 'http://x/"q"'})
+        errors = CrossReferenceValidator().validate_zabbix_tag_escaping(config)
+        assert len(errors) == 1
+        assert errors[0].path == "zabbix.labels.__zbx_item_url"
+
+    def test_recording_rule_labels_checked(self):
+        """Recording rule labels (item-level tags) are validated and named by record."""
+        config = {"groups": [{"name": "recording_rules", "rules": [
+            {"record": "my:record", "expr": "m", "labels": {"__zbx_item_units": 'bad "u"'}}]}]}
+        errors = CrossReferenceValidator().validate_zabbix_tag_escaping(config)
+        assert len(errors) == 1
+        assert "my:record" in str(errors[0])
+
+    def test_multiple_violations_each_reported(self):
+        """Each offending tag value produces its own error."""
+        config = self._make_config({
+            "__zbx_trigger_expression": 'a "b"',
+            "__zbx_trigger_description": 'c "d"',
+            "__zbx_priority": "HIGH",
+        })
+        assert len(CrossReferenceValidator().validate_zabbix_tag_escaping(config)) == 2
+
+    # --- not subject to the rule ---
+
+    def test_bare_quotes_in_expr_and_annotations_pass(self):
+        """expr and annotations are JSON-escaped by the template, so bare quotes are correct there."""
+        config = {"groups": [{"name": "alerting_rules", "rules": [{
+            "alert": "a",
+            "expr": 'm > {$X:"{{$labels.k8s_cluster}}"}',
+            "annotations": {"summary": 's "q"', "description": 'd "q"'},
+            "labels": {"severity": 'has "quotes"'},
+        }]}]}
+        assert CrossReferenceValidator().validate_zabbix_tag_escaping(config) == []
+
+    # --- integration through ConfigValidator ---
+
+    def test_validate_config_rejects_bare_quote(self):
+        """ConfigValidator.validate_config raises with a fix suggestion."""
+        config = self._make_config({"__zbx_trigger_expression": 'min({{item_full_key}},{$A.T})>{$A.R:"{{$labels.k}}"}'})
+        with pytest.raises(ValidationError) as exc_info:
+            ConfigValidator().validate_config(config)
+        message = str(exc_info.value)
+        assert "test_alert" in message
+        assert "__zbx_trigger_expression" in message
+        assert "Suggestions:" in message
+
+    def test_validate_config_accepts_escaped_quote(self):
+        """The corrected form passes the full validation."""
+        config = self._make_config({"__zbx_trigger_expression": 'min({{item_full_key}},{$A.T})>{$A.R:\\"{{$labels.k}}\\"}'})
+        ConfigValidator().validate_config(config)
