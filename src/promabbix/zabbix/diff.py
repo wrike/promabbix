@@ -31,11 +31,15 @@ on Zabbix 6/7, or by promabbix's own generator, which uses the same shape):
   Ordered lists (``preprocessing`` steps, ``parameters``) are never sorted.
 * Defaults omission: Zabbix export omits fields holding their default value.
   Normalisation removes ``None``, ``""``, ``[]``, ``{}`` and every value equal to
-  a documented default (``_DEFAULTS``: e.g. ``status: ENABLED``, item
-  ``delay: 1m``) from *both* sides, so ``missing == default``.  Fields outside
+  a Zabbix 6.0 schema default (``_DEFAULTS``: e.g. ``status: ENABLED``, item
+  ``delay: 1m``, ``value_type: UNSIGNED``; every entry is traced to a C60XmlValidator.php line in the
+  comment above the table) from *both* sides, so ``missing == default``.  Fields outside
   that table are compared strictly: a field present on one side only counts
   as a change.  That is conservative on purpose: an unknown difference causes
   an import (safe), never a skipped one.  Numbers are compared as strings.
+* LLD filter conditions: Zabbix sorts them on export and renumbers ``formulaid`` A, B, C... for evaltype
+  AND_OR / AND / OR, so for those ``formulaid`` is dropped and conditions are sorted by (macro, operator,
+  value); only FORMULA keeps ``formulaid`` and ``formula`` (see ``_clean_filter``).
 * ``delay`` of ``DEPENDENT`` items / rules is ignored (it has no meaning there).
 * Only templates that exist in ``desired`` are compared; templates present only
   in ``live`` are ignored (import never deletes templates).  Top-level keys of
@@ -73,6 +77,7 @@ from __future__ import annotations
 import copy
 import difflib
 import json
+import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, ClassVar, Dict, List, Optional, Sequence, Set, Tuple, Union
@@ -158,44 +163,114 @@ _CHILDREN: Dict[str, Dict[str, _Child]] = {
     },
 }
 
-_ITEM_DEFAULTS = {
-    "status": "ENABLED", "type": "ZABBIX_PASSIVE", "value_type": "FLOAT", "delay": "1m",
-    "history": "90d", "trends": "365d", "request_method": "GET", "timeout": "3s",
-    "discover": "DISCOVER", "allow_traps": "NO", "follow_redirects": "YES",
-    "retrieve_mode": "BODY", "post_type": "RAW", "output_format": "RAW",
-    "authtype": "NONE", "verify_host": "NO", "verify_peer": "NO", "status_codes": "200",
+# Defaults omission, checked against the Zabbix 6.0 import/export schema
+# (include/classes/import/validators/C60XmlValidator.php of release/6.0, "C60:<line>" below).
+# The 6.0 exporter drops every field equal to its schema default (CConfigurationExportBuilder.php:74-90)
+# and the importer fills it in, so ``missing == default``.  A wrong default here is not harmless: it
+# hides real drift (live omitted value == default) and shows a permanent diff for the other value.
+#
+# Template items (C60:1141-1220), item prototypes (C60:1288-1362), discovery rules (C60:1257-1285,
+# 1543-1575) and the trigger kinds are listed field by field next to each table.  Fields whose schema
+# default is the empty string are covered by the generic empty-value removal.
+#
+# HTTP / common fields (item, item prototype, rule):
+#   status ENABLED      C60:1151, 1297, 1264      authtype NONE      C60:1157, 1304, 1268
+#   type ZABBIX_PASSIVE C60:1145, 1291, 1260      delay 1m           C60:1148, 1294, 1263
+#   timeout 3s          C60:1182, 1329, 1543      status_codes 200   C60:1197, 1344, 1558
+#   follow_redirects YES C60:1198, 1345, 1559     post_type RAW      C60:1199, 1346, 1560
+#   retrieve_mode BODY  C60:1207, 1354, 1568      request_method GET C60:1208, 1355, 1569
+#   allow_traps NO      C60:1210, 1357, 1570      verify_peer/host NO C60:1214-1215, 1361-1362, 1574-1575
+_COMMON_ITEM_DEFAULTS = {
+    "status": "ENABLED", "type": "ZABBIX_PASSIVE", "delay": "1m", "authtype": "NONE",
+    "request_method": "GET", "timeout": "3s", "allow_traps": "NO", "follow_redirects": "YES",
+    "retrieve_mode": "BODY", "post_type": "RAW", "verify_host": "NO", "verify_peer": "NO",
+    "status_codes": "200",
 }
+# Items and item prototypes only (a discovery rule has none of these tags in 6.0):
+#   value_type UNSIGNED  C60:1152, 1299 (also 476, 622 for host items); NOT FLOAT.  The exporter omits
+#                        UNSIGNED and writes FLOAT explicitly.
+#   history 90d          C60:1149, 1295       trends 365d       C60:1150, 1296
+#   inventory_link NONE  C60:1163, 1310       output_format RAW C60:1209, 1356
+_ITEM_DEFAULTS = {
+    **_COMMON_ITEM_DEFAULTS, "value_type": "UNSIGNED", "history": "90d", "trends": "365d",
+    "inventory_link": "NONE", "output_format": "RAW",
+}
+# Item prototypes only: discover DISCOVER C60:1298 (items have no ``discover`` tag).
+_ITEM_PROTOTYPE_DEFAULTS = {**_ITEM_DEFAULTS, "discover": "DISCOVER"}
+# Discovery rules only: lifetime 30d C60:1285.
+_DISCOVERY_RULE_DEFAULTS = {**_COMMON_ITEM_DEFAULTS, "lifetime": "30d"}
+# Triggers (C60:1226-1238, 1770-1782) and trigger prototypes (C60:1373-1386, 1408-1421):
+#   status ENABLED, priority NOT_CLASSIFIED, type SINGLE, manual_close NO, recovery_mode EXPRESSION,
+#   correlation_mode DISABLED.  Only trigger prototypes have discover DISCOVER (C60:1382, 1417).
 _TRIGGER_DEFAULTS = {
     "status": "ENABLED", "priority": "NOT_CLASSIFIED", "manual_close": "NO",
-    "recovery_mode": "EXPRESSION", "correlation_mode": "DISABLED",
-    "discover": "DISCOVER", "type": "SINGLE",
+    "recovery_mode": "EXPRESSION", "correlation_mode": "DISABLED", "type": "SINGLE",
 }
+_TRIGGER_PROTOTYPE_DEFAULTS = {**_TRIGGER_DEFAULTS, "discover": "DISCOVER"}
+# Graphs C60:1802-1818, graph prototypes C60:1441-1457 (+ discover DISCOVER C60:1472).
 _GRAPH_DEFAULTS = {
-    "type": "NORMAL", "width": "900", "height": "200", "show_legend": "YES",
-    "show_work_period": "YES", "show_triggers": "YES",
+    "type": "NORMAL", "width": "900", "height": "200", "yaxismin": "0", "yaxismax": "100",
+    "show_work_period": "YES", "show_triggers": "YES", "show_legend": "YES", "show_3d": "NO",
+    "percent_left": "0", "percent_right": "0", "ymin_type_1": "CALCULATED", "ymax_type_1": "CALCULATED",
 }
 
 # Defaults keyed by object kind (child objects) or by field name (plain nested values).
 _DEFAULTS: Dict[str, Dict[str, Any]] = {
     "item": _ITEM_DEFAULTS,
-    "item_prototype": _ITEM_DEFAULTS,
-    "discovery_rule": {**_ITEM_DEFAULTS, "lifetime": "30d"},
+    "item_prototype": _ITEM_PROTOTYPE_DEFAULTS,
+    "discovery_rule": _DISCOVERY_RULE_DEFAULTS,
     "trigger": _TRIGGER_DEFAULTS,
-    "trigger_prototype": _TRIGGER_DEFAULTS,
+    "trigger_prototype": _TRIGGER_PROTOTYPE_DEFAULTS,
     "graph": _GRAPH_DEFAULTS,
-    "graph_prototype": _GRAPH_DEFAULTS,
-    "httptest": {"status": "ENABLED", "delay": "1m", "attempts": "1", "agent": "Zabbix"},
+    "graph_prototype": {**_GRAPH_DEFAULTS, "discover": "DISCOVER"},
+    # graph_items C60:1460-1465, 1821-1826
+    "graph_items": {"sortorder": "0", "drawtype": "SINGLE_LINE", "color": "009600", "yaxisside": "LEFT",
+                    "calc_fnc": "AVG", "type": "SIMPLE"},
+    # httptests: delay/attempts/agent C60:1642-1644, status 1658, authentication 1659, verify_* 1662-1663
+    "httptest": {"status": "ENABLED", "delay": "1m", "attempts": "1", "agent": "Zabbix",
+                 "authentication": "NONE", "verify_peer": "NO", "verify_host": "NO"},
+    # httptest steps: follow_redirects 1690, retrieve_mode 1691, timeout 15s 1692
+    "steps": {"follow_redirects": "YES", "retrieve_mode": "BODY", "timeout": "15s"},
+    # host prototypes: status 1480, discover 1481, custom_interfaces 1513, inventory_mode 1536
+    "host_prototype": {"status": "ENABLED", "discover": "DISCOVER", "custom_interfaces": "NO",
+                       "inventory_mode": "DISABLED"},
+    # host prototype interfaces: default 1516, type 1517, useip 1518, ip 1519, port 1521
+    "interfaces": {"default": "YES", "type": "ZABBIX", "useip": "YES", "ip": "127.0.0.1", "port": "10050"},
+    # macros: template C60:1714, host prototype 1502
     "macro": {"type": "TEXT"},
-    "host_macro": {"type": "0"},
+    "macros": {"type": "TEXT"},
+    "host_macro": {"type": "0"},  # host.get API shape (usermacro type 0 = text), not an export field
+    # preprocessing step error_handler ORIGINAL_ERROR C60:498, 1174, 1588 via ex_default; for a
+    # CHECK_NOT_SUPPORTED step the default is DISCARD_VALUE (C60:2097-2103), see _defaults_for
     "preprocessing": {"error_handler": "ORIGINAL_ERROR"},
-    "conditions": {"operator": "MATCHES_REGEX"},
+    # LLD filter evaltype AND_OR C60:1274, 1598; condition operator MATCHES_REGEX C60:1280, 1604
     "filter": {"evaltype": "AND_OR"},
+    "conditions": {"operator": "MATCHES_REGEX"},
+    # LLD overrides: stop NO_STOP C60:1596, operation operator EQUAL C60:1612
+    "overrides": {"stop": "NO_STOP"},
+    "operations": {"operator": "EQUAL"},
+    # value map mappings: type EQUAL C60:1757
+    "mappings": {"type": "EQUAL"},
+    # dashboards: display_period 30 / auto_start YES C60:1723-1724; pages display_period 0 C60:1728;
+    # widgets x 0, y 0, width 1, height 2, hide_header NO C60:1733-1737
+    "dashboard": {"display_period": "30", "auto_start": "YES"},
+    "pages": {"display_period": "0"},
+    "widgets": {"x": "0", "y": "0", "width": "1", "height": "2", "hide_header": "NO"},
 }
 
 _DEPENDENT_KINDS = frozenset({"item", "item_prototype", "discovery_rule"})
 
-# Plain lists of dicts where order carries no meaning.
+# Plain lists of dicts where order carries no meaning.  LLD filter conditions are only sorted like this for
+# evaltype FORMULA (formulaid is meaningful there); see _clean_filter for the other evaltypes.
 _PLAIN_SORT: Dict[str, Tuple[str, ...]] = {"conditions": ("formulaid", "macro", "value")}
+
+# LLD filter evaltypes for which Zabbix sorts the conditions on export and renumbers ``formulaid``
+# A, B, C... (sortLldRuleFilterConditions, ui/include/items.inc.php:2345-2373, called from
+# CConfigurationExportBuilder.php:691-695).  Names per C60XmlValidator.php:328-333 and
+# CXmlConstantName.php:282-285 (AND_OR, AND, OR, FORMULA).  Both the export and promabbix use these names.
+_FILTER_RENUMBERED = frozenset({"AND_OR", "AND", "OR"})
+_DEFAULT_EVALTYPE = "AND_OR"
+_DEFAULT_OPERATOR = "MATCHES_REGEX"
 
 # Keys removed at any depth (generated ids).
 _VOLATILE_KEYS = frozenset({
@@ -339,18 +414,70 @@ def _is_empty(value: Any) -> bool:
     return value is None or (isinstance(value, (str, list, dict)) and len(value) == 0)
 
 
+def _defaults_for(ctx: str, value: JsonDict) -> Dict[str, Any]:
+    defaults = _DEFAULTS.get(ctx, {})
+    if ctx == "preprocessing" and value.get("type") == "CHECK_NOT_SUPPORTED":
+        # ex_default of error_handler (C60XmlValidator.php:2097-2103): DISCARD_VALUE for this step type
+        return {**defaults, "error_handler": "DISCARD_VALUE"}
+    return defaults
+
+
+def _clean_dict(value: JsonDict, ctx: str) -> JsonDict:
+    defaults = _defaults_for(ctx, value)
+    out = {}
+    for k, v in value.items():
+        if k in _VOLATILE_KEYS:
+            continue
+        cleaned = _clean(v, k)
+        if not _is_empty(cleaned) and cleaned != defaults.get(k):
+            out[k] = cleaned
+    return out
+
+
+def _natural_key(text: str) -> List[Any]:
+    """Case-insensitive natural order, like PHP ``strnatcasecmp`` (``{#A2}`` before ``{#A10}``)."""
+    return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", text.casefold())]
+
+
+def _condition_key(condition: JsonDict) -> Tuple[Any, ...]:
+    """Total order: macro (natural, case-insensitive), then operator, then value.
+
+    Zabbix itself only orders by macro, then (not-)exists operators first, then value
+    (items.inc.php:2350-2367); any total order will do here because ``formulaid`` is dropped on both
+    sides, it just has to be the same on both sides.
+    """
+    return (_natural_key(str(condition.get("macro", ""))),
+            str(condition.get("operator", _DEFAULT_OPERATOR)),
+            _natural_key(str(condition.get("value", ""))),
+            json.dumps(condition, sort_keys=True, ensure_ascii=False))
+
+
+def _clean_filter(value: JsonDict) -> JsonDict:
+    """Normalise a discovery rule / override ``filter``.
+
+    On export Zabbix sorts the conditions of an AND_OR / AND / OR filter and renumbers ``formulaid``
+    A, B, C... (the exporter also drops a filter without conditions altogether,
+    CConfigurationExportBuilder.php:643-645, 726-728).  The ``formulaid`` a template sends is therefore
+    never what the export returns, so for those evaltypes ``formulaid`` and ``formula`` are dropped and the
+    conditions are sorted by (macro, operator, value).  For FORMULA the ids are the identity of the
+    conditions in the formula: ``formulaid`` and ``formula`` are kept and conditions sorted by formulaid.
+    """
+    out = _clean_dict(value, "filter")
+    if not out.get("conditions"):
+        return {}
+    if (value.get("evaltype") or _DEFAULT_EVALTYPE) in _FILTER_RENUMBERED:
+        out.pop("formula", None)
+        conditions = [{k: v for k, v in c.items() if k != "formulaid"} for c in out["conditions"]
+                      if isinstance(c, dict)]
+        conditions.sort(key=_condition_key)
+        out["conditions"] = conditions
+    return out
+
+
 def _clean(value: Any, ctx: str) -> Any:
     """Recursively normalise a plain value found under field ``ctx``."""
     if isinstance(value, dict):
-        defaults = _DEFAULTS.get(ctx, {})
-        out = {}
-        for k, v in value.items():
-            if k in _VOLATILE_KEYS:
-                continue
-            cleaned = _clean(v, k)
-            if not _is_empty(cleaned) and cleaned != defaults.get(k):
-                out[k] = cleaned
-        return out
+        return _clean_filter(value) if ctx == "filter" else _clean_dict(value, ctx)
     if isinstance(value, list):
         items = [_clean(v, ctx) for v in value]
         sort_keys = _PLAIN_SORT.get(ctx)

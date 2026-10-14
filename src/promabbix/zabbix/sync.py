@@ -59,8 +59,9 @@ def _version_tuple(version: str) -> Tuple[int, ...]:
     return tuple(parts)
 
 
-def build_import_rules(version: Tuple[int, ...]) -> Dict[str, Dict[str, bool]]:
-    """Import rules for the given Zabbix version, e.g. ``(7, 0)`` or ``(7, 0, 5)``.
+def build_import_rules(version: Union[str, Tuple[int, ...]]) -> Dict[str, Dict[str, bool]]:
+    """Import rules for the given Zabbix version: a tuple such as ``(7, 0)`` / ``(7, 0, 5)`` or the API
+    version string (``"6.0.25"``, parsed with :func:`_version_tuple`).
 
     Parity reference: ``import_template()`` of community.zabbix 1.9.3
     (plugins/modules/zabbix_template.py). Same rules, same version switches, so a native import behaves
@@ -68,6 +69,8 @@ def build_import_rules(version: Tuple[int, ...]) -> Dict[str, Dict[str, bool]]:
     discovery rules, graphs, httptests, triggers, template linkage and template dashboards: whatever is
     not in the template JSON is deleted from Zabbix.
     """
+    if isinstance(version, str):
+        version = _version_tuple(version)
     rules: Dict[str, Dict[str, bool]] = {
         "applications": {"createMissing": True, "deleteMissing": True},
         "discoveryRules": dict(_AUTHORITATIVE),
@@ -161,7 +164,7 @@ def sync_template(desired_template_json: Union[str, Dict[str, Any]], client: Zab
     if not diff.has_changes:  # PM-6: skip no-op imports (same decision as diff.should_import)
         return result
     if not dry_run:
-        params = {"format": "json", "rules": build_import_rules(_version_tuple(client.api_version)), "source": source}
+        params = {"format": "json", "rules": build_import_rules(client.api_version), "source": source}
         _write(client, dry_run, "configuration.import", params)
         result.imported = True
     return result

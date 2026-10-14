@@ -23,6 +23,8 @@ from promabbix.zabbix.diff import (
     should_import,
 )
 
+from tests.zabbix60_export import export_60, num2letter, sort_and_renumber
+
 FIXTURES = Path(__file__).parent / "fixtures" / "zabbix_diff"
 TPL = "templ_t"
 KEY = "cpu[usage]"
@@ -132,7 +134,7 @@ class TestNormalize:
         a = make_export()
         b = make_export()
         # Export omits default valued fields; an explicit default must normalise away.
-        tpl_of(b)["items"][1].update({"status": "ENABLED", "history": "90d", "value_type": "FLOAT", "type": "ZABBIX_PASSIVE"})
+        tpl_of(b)["items"][1].update({"status": "ENABLED", "history": "90d", "value_type": "UNSIGNED", "type": "ZABBIX_PASSIVE"})
         tpl_of(b)["items"][0]["triggers"][0].update({"status": "ENABLED", "manual_close": "NO", "recovery_mode": "EXPRESSION"})
         assert normalize_template(a) == normalize_template(b)
 
@@ -166,7 +168,8 @@ class TestNormalize:
             {"macro": "{#A}", "value": "y", "formulaid": "A"},
         ]}
         norm_rule = tpl_of(normalize_template(export))["discovery_rules"][0]
-        assert [c["formulaid"] for c in norm_rule["filter"]["conditions"]] == ["A", "B"]
+        assert [c["macro"] for c in norm_rule["filter"]["conditions"]] == ["{#A}", "{#B}"]
+        assert all("formulaid" not in c for c in norm_rule["filter"]["conditions"])  # renumbered on export
         assert "evaltype" not in norm_rule["filter"]  # default
         assert "operator" not in norm_rule["filter"]["conditions"][1]  # default
 
@@ -759,3 +762,283 @@ class TestDiffHost:
     def test_unmanaged_fields_are_ignored(self) -> None:
         live = live_host(inventory_mode="1", tags=[{"tag": "x"}])
         assert not diff_host(live, desired_host()).has_changes
+
+
+# ---------------------------------------------------------------------------
+# Zabbix 6.0 export shape: LLD filter renumbering and schema defaults
+# ---------------------------------------------------------------------------
+
+def cond(macro: str, value: str, formulaid: str, operator: str = "MATCHES_REGEX") -> Dict[str, Any]:
+    return {"macro": macro, "value": value, "operator": operator, "formulaid": formulaid}
+
+
+def with_filter(evaltype: str, conditions: Any, **extra: Any) -> Dict[str, Any]:
+    export = make_export()
+    flt: Dict[str, Any] = {"conditions": conditions, **extra}
+    if evaltype:
+        flt["evaltype"] = evaltype
+    tpl_of(export)["discovery_rules"][0]["filter"] = flt
+    return export
+
+
+class TestLldFilterRenumbering:
+    """sortLldRuleFilterConditions (items.inc.php:2345-2373): the export sorts and renumbers formulaid."""
+
+    # promabbix sends K8S_CLUSTER=A,B and INSTANCE=C,D (node_exporter); Zabbix hands back INSTANCE first
+    SENT = [cond("{#K8S_CLUSTER}", "{$K.OK}", "A"), cond("{#K8S_CLUSTER}", "{$K.NOT}", "B", "NOT_MATCHES_REGEX"),
+            cond("{#INSTANCE}", "{$I.OK}", "C"), cond("{#INSTANCE}", "{$I.NOT}", "D", "NOT_MATCHES_REGEX")]
+    # same macro: ordered by value (natural, case-insensitive): "{$K.NOT}" < "{$K.OK}"
+    EXPORTED = [cond("{#INSTANCE}", "{$I.NOT}", "A", "NOT_MATCHES_REGEX"), cond("{#INSTANCE}", "{$I.OK}", "B"),
+                cond("{#K8S_CLUSTER}", "{$K.NOT}", "C", "NOT_MATCHES_REGEX"), cond("{#K8S_CLUSTER}", "{$K.OK}", "D")]
+
+    @pytest.mark.parametrize("evaltype", ["AND_OR", "AND", "OR", ""])
+    def test_renumbered_live_equals_sent_desired(self, evaltype: str) -> None:
+        live = with_filter(evaltype, copy.deepcopy(self.EXPORTED))
+        desired = with_filter(evaltype, copy.deepcopy(self.SENT))
+        diff = diff_template(live, desired)
+        assert not diff.has_changes, diff.render()
+        assert should_import(live, desired) is False
+
+    def test_the_old_ordering_would_have_differed(self) -> None:
+        # documents the bug: a (formulaid, macro, value) sort never lines the sent and exported lists up
+        by_id = lambda conds: sorted(conds, key=lambda c: (c["formulaid"], c["macro"], c["value"]))  # noqa: E731
+        assert by_id(self.SENT) != by_id(self.EXPORTED)
+
+    def test_emulated_zabbix_sort_matches_expected_order(self) -> None:
+        assert sort_and_renumber(self.SENT, "AND") == self.EXPORTED
+
+    def test_real_value_change_is_a_change(self) -> None:
+        live = with_filter("AND", copy.deepcopy(self.EXPORTED))
+        sent = copy.deepcopy(self.SENT)
+        sent[2]["value"] = "{$I.CHANGED}"
+        diff = diff_template(live, with_filter("AND", sent))
+        assert diff.has_changes
+        change = diff.changed[0]
+        assert change.kind == "discovery_rule" and [f.field for f in change.fields] == ["filter"]
+
+    def test_operator_change_is_a_change(self) -> None:
+        live = with_filter("AND", copy.deepcopy(self.EXPORTED))
+        sent = copy.deepcopy(self.SENT)
+        sent[0]["operator"] = "NOT_MATCHES_REGEX"
+        assert diff_template(live, with_filter("AND", sent)).has_changes
+
+    def test_added_and_removed_condition_is_a_change(self) -> None:
+        live = with_filter("AND", copy.deepcopy(self.EXPORTED))
+        assert diff_template(live, with_filter("AND", self.SENT[:3])).has_changes
+        assert diff_template(with_filter("AND", self.EXPORTED[:3]), with_filter("AND", self.SENT)).has_changes
+
+    def test_evaltype_change_is_a_change(self) -> None:
+        live = with_filter("AND", copy.deepcopy(self.EXPORTED))
+        assert diff_template(live, with_filter("OR", copy.deepcopy(self.SENT))).has_changes
+        assert diff_template(live, with_filter("", copy.deepcopy(self.SENT))).has_changes
+
+    def test_formula_evaltype_still_compares_formulaid_and_formula(self) -> None:
+        conds = [cond("{#A}", "a", "A"), cond("{#B}", "b", "B")]
+        live = with_filter("FORMULA", copy.deepcopy(conds), formula="A or B")
+        assert not diff_template(live, with_filter("FORMULA", copy.deepcopy(conds), formula="A or B")).has_changes
+        swapped = [cond("{#A}", "a", "B"), cond("{#B}", "b", "A")]
+        assert diff_template(live, with_filter("FORMULA", swapped, formula="A or B")).has_changes
+        assert diff_template(live, with_filter("FORMULA", copy.deepcopy(conds), formula="A and B")).has_changes
+
+    def test_formula_conditions_are_order_insensitive(self) -> None:
+        conds = [cond("{#A}", "a", "A"), cond("{#B}", "b", "B")]
+        live = with_filter("FORMULA", copy.deepcopy(conds), formula="A or B")
+        desired = with_filter("FORMULA", list(reversed(copy.deepcopy(conds))), formula="A or B")
+        assert not diff_template(live, desired).has_changes
+
+    def test_normalised_form_drops_formulaid_only_outside_formula(self) -> None:
+        norm = tpl_of(normalize_template(with_filter("AND", copy.deepcopy(self.SENT))))["discovery_rules"][0]
+        assert all("formulaid" not in c for c in norm["filter"]["conditions"])
+        assert [c["macro"] for c in norm["filter"]["conditions"]] == [
+            "{#INSTANCE}", "{#INSTANCE}", "{#K8S_CLUSTER}", "{#K8S_CLUSTER}"]
+        formula = tpl_of(normalize_template(with_filter("FORMULA", [cond("{#A}", "a", "A")], formula="A")))
+        flt = formula["discovery_rules"][0]["filter"]
+        assert flt["formula"] == "A" and flt["conditions"][0]["formulaid"] == "A"
+
+    def test_numeric_macros_sort_naturally(self) -> None:
+        sent = [cond("{#M10}", "x", "A"), cond("{#M2}", "x", "B")]
+        live = with_filter("AND", sort_and_renumber(sent, "AND"))
+        assert [c["macro"] for c in live["zabbix_export"]["templates"][0]["discovery_rules"][0]
+                ["filter"]["conditions"]] == ["{#M2}", "{#M10}"]
+        assert not diff_template(live, with_filter("AND", sent)).has_changes
+
+    def test_filter_without_conditions_equals_no_filter(self) -> None:
+        # the exporter drops a filter with no conditions (CConfigurationExportBuilder.php:643-645)
+        assert not diff_template(make_export(), with_filter("AND", [])).has_changes
+
+    def test_num2letter_matches_zabbix(self) -> None:
+        assert [num2letter(i) for i in (0, 1, 25, 26, 27, 51, 52)] == ["A", "B", "Z", "AA", "AB", "AZ", "BA"]
+
+
+def with_item_value_type(export: Dict[str, Any], **fields: Any) -> Dict[str, Any]:
+    tpl_of(export)["items"][1].update(fields)
+    return export
+
+
+class TestZabbix60Defaults:
+    """Schema defaults of C60XmlValidator.php: the exporter omits them, the diff must treat them as default."""
+
+    def test_unsigned_is_the_default_value_type(self) -> None:
+        live = make_export()                      # value_type omitted = UNSIGNED
+        assert not diff_template(live, with_item_value_type(make_export(), value_type="UNSIGNED")).has_changes
+
+    def test_desired_float_against_omitted_live_is_a_change(self) -> None:
+        diff = diff_template(make_export(), with_item_value_type(make_export(), value_type="FLOAT"))
+        assert diff.has_changes
+        assert [(f.field, f.old, f.new) for f in diff.changed[0].fields] == [("value_type", None, "FLOAT")]
+
+    def test_float_drift_to_unsigned_is_detected(self) -> None:
+        live = with_item_value_type(make_export(), value_type="FLOAT")   # the 6.0 export writes FLOAT explicitly
+        diff = diff_template(live, make_export())                        # desired: default UNSIGNED
+        assert diff.has_changes
+        assert [(f.field, f.old, f.new) for f in diff.changed[0].fields] == [("value_type", "FLOAT", None)]
+
+    def test_item_prototype_value_type_default(self) -> None:
+        live = make_export()
+        desired = make_export()
+        proto = tpl_of(desired)["discovery_rules"][0]["item_prototypes"][0]
+        proto["value_type"] = "UNSIGNED"
+        assert not diff_template(live, desired).has_changes
+        proto["value_type"] = "FLOAT"
+        assert diff_template(live, desired).has_changes
+
+    @pytest.mark.parametrize("field,default", [
+        ("inventory_link", "NONE"), ("authtype", "NONE"), ("output_format", "RAW"), ("allow_traps", "NO"),
+        ("timeout", "3s"), ("status_codes", "200"), ("history", "90d"), ("trends", "365d"),
+        ("follow_redirects", "YES"), ("retrieve_mode", "BODY"), ("request_method", "GET"), ("post_type", "RAW"),
+        ("verify_peer", "NO"), ("verify_host", "NO"),
+    ])
+    def test_item_default_is_omitted_on_the_live_side(self, field: str, default: str) -> None:
+        desired = with_item_value_type(make_export(), **{field: default})
+        assert not diff_template(make_export(), desired).has_changes
+        other = "other" if field in ("authtype", "inventory_link") else "x"
+        assert diff_template(make_export(), with_item_value_type(make_export(), **{field: other})).has_changes
+
+    def test_item_prototype_discover_default(self) -> None:
+        desired = make_export()
+        tpl_of(desired)["discovery_rules"][0]["item_prototypes"][0]["discover"] = "DISCOVER"
+        assert not diff_template(make_export(), desired).has_changes
+        tpl_of(desired)["discovery_rules"][0]["item_prototypes"][0]["discover"] = "NO_DISCOVER"
+        assert diff_template(make_export(), desired).has_changes
+
+    def test_discovery_rule_has_no_value_type_default(self) -> None:
+        # 6.0 discovery rules have no value_type tag: it is not a default there, any value is a difference
+        desired = make_export()
+        tpl_of(desired)["discovery_rules"][0]["value_type"] = "UNSIGNED"
+        assert diff_template(make_export(), desired).has_changes
+
+    def test_trigger_prototype_discover_default(self) -> None:
+        desired = make_export()
+        proto = tpl_of(desired)["discovery_rules"][0]["item_prototypes"][0]["trigger_prototypes"][0]
+        proto["discover"] = "DISCOVER"
+        assert not diff_template(make_export(), desired).has_changes
+        proto["discover"] = "NO_DISCOVER"
+        assert diff_template(make_export(), desired).has_changes
+
+    def test_trigger_has_no_discover_default(self) -> None:
+        desired = make_export()
+        tpl_of(desired)["items"][0]["triggers"][0]["discover"] = "DISCOVER"
+        assert diff_template(make_export(), desired).has_changes
+
+    @pytest.mark.parametrize("field,default", [("priority", "NOT_CLASSIFIED"), ("type", "SINGLE"),
+                                               ("manual_close", "NO"), ("correlation_mode", "DISABLED"),
+                                               ("recovery_mode", "EXPRESSION"), ("status", "ENABLED")])
+    def test_trigger_defaults(self, field: str, default: str) -> None:
+        live, desired = make_export(), make_export()
+        tpl_of(live)["items"][0]["triggers"][0].pop("priority")      # the exporter omits default values
+        tpl_of(desired)["items"][0]["triggers"][0].pop("priority")
+        tpl_of(desired)["items"][0]["triggers"][0][field] = default
+        assert not diff_template(live, desired).has_changes
+
+    def test_check_not_supported_step_default_error_handler_is_discard_value(self) -> None:
+        # C60XmlValidator.php:2097-2103: the default differs for this step type
+        live, desired = make_export(), make_export()
+        step = {"type": "CHECK_NOT_SUPPORTED", "parameters": ["-1"]}
+        tpl_of(live)["items"][1]["preprocessing"] = [dict(step)]                          # exporter omits it
+        tpl_of(desired)["items"][1]["preprocessing"] = [dict(step, error_handler="DISCARD_VALUE")]
+        assert not diff_template(live, desired).has_changes
+        tpl_of(desired)["items"][1]["preprocessing"] = [dict(step, error_handler="ORIGINAL_ERROR")]
+        assert diff_template(live, desired).has_changes
+
+    def test_other_step_default_error_handler_stays_original_error(self) -> None:
+        live, desired = make_export(), make_export()
+        tpl_of(live)["items"][1]["preprocessing"] = [{"type": "TRIM", "parameters": ["x"]}]
+        tpl_of(desired)["items"][1]["preprocessing"] = [
+            {"type": "TRIM", "parameters": ["x"], "error_handler": "ORIGINAL_ERROR"}]
+        assert not diff_template(live, desired).has_changes
+        tpl_of(desired)["items"][1]["preprocessing"][0]["error_handler"] = "DISCARD_VALUE"
+        assert diff_template(live, desired).has_changes
+
+    def test_httptest_and_graph_defaults(self) -> None:
+        live = make_export()
+        desired = make_export()
+        tpl_of(live)["httptests"] = [{"name": "w", "steps": [{"name": "s", "url": "u"}]}]
+        tpl_of(desired)["httptests"] = [{"name": "w", "authentication": "NONE", "verify_peer": "NO",
+                                         "steps": [{"name": "s", "url": "u", "timeout": "15s",
+                                                    "follow_redirects": "YES", "retrieve_mode": "BODY"}]}]
+        assert not diff_template(live, desired).has_changes
+        tpl_of(desired)["httptests"][0]["authentication"] = "BASIC"
+        assert diff_template(live, desired).has_changes
+
+
+# ---------------------------------------------------------------------------
+# 6.0-shaped export fixture
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def rendered_with_filter(tmp_path_factory: pytest.TempPathFactory) -> Dict[str, Any]:
+    out = tmp_path_factory.mktemp("zbx_diff60") / "template.json"
+    rc = GenerateTemplateCommand().execute(str(FIXTURES / "service_alerts_lld_filter.yaml"), str(out),
+                                           None, "prometheus_alert_rules_to_zbx_template.j2", False)
+    assert rc == 0
+    result: Dict[str, Any] = json.loads(out.read_text())
+    return result
+
+
+@pytest.fixture
+def live_60() -> Dict[str, Any]:
+    result: Dict[str, Any] = json.loads((FIXTURES / "live_export_60_node_exporter_lld_filter.json").read_text())
+    return result
+
+
+class TestZabbix60Export:
+    def test_fixture_has_the_60_shape(self, live_60: Dict[str, Any]) -> None:
+        exp = live_60["zabbix_export"]
+        assert exp["version"] == "6.0" and "groups" in exp and "template_groups" not in exp
+        rule = exp["templates"][0]["discovery_rules"][0]
+        assert [c["formulaid"] for c in rule["filter"]["conditions"]] == ["A", "B", "C", "D"]
+        assert [c["macro"] for c in rule["filter"]["conditions"]][0] == "{#INSTANCE}"  # sorted, not sent order
+        assert "evaltype" in rule["filter"] and rule["filter"]["evaltype"] == "AND"
+        assert "operator" not in rule["filter"]["conditions"][0]          # default omitted
+        assert "lifetime" in rule and "status" not in rule                # non-default kept, default omitted
+        assert all(i["value_type"] == "TEXT" for i in exp["templates"][0]["items"])      # non-default kept
+        proto = rule["item_prototypes"][0]
+        assert proto["value_type"] == "FLOAT"                             # non-default written explicitly
+
+    def test_fixture_matches_the_emulation_of_the_rendered_template(self, rendered_with_filter: Dict[str, Any],
+                                                                    live_60: Dict[str, Any]) -> None:
+        assert export_60(rendered_with_filter) == live_60
+
+    def test_diff_of_60_export_against_rendered_is_no_change(self, rendered_with_filter: Dict[str, Any],
+                                                             live_60: Dict[str, Any]) -> None:
+        diff = diff_template(live_60, rendered_with_filter)
+        assert not diff.has_changes, diff.render()
+        assert should_import(live_60, rendered_with_filter) is False
+
+    def test_emulated_60_export_of_the_plain_rendering_is_no_change(self, rendered_desired: Dict[str, Any]) -> None:
+        diff = diff_template(export_60(rendered_desired), rendered_desired)
+        assert not diff.has_changes, diff.render()
+
+    def test_real_drift_is_still_found_in_a_60_export(self, rendered_with_filter: Dict[str, Any],
+                                                      live_60: Dict[str, Any]) -> None:
+        rule = tpl_of(live_60)["discovery_rules"][0]
+        rule["filter"]["conditions"][1]["value"] = "{$OTHER}"
+        diff = diff_template(live_60, rendered_with_filter)
+        assert [c.kind for c in diff.changed] == ["discovery_rule"]
+        # value_type drift FLOAT -> UNSIGNED (live default) on a prototype is reported too
+        live2 = json.loads((FIXTURES / "live_export_60_node_exporter_lld_filter.json").read_text())
+        for proto in tpl_of(live2)["discovery_rules"][0]["item_prototypes"]:
+            proto.pop("value_type")
+        diff2 = diff_template(live2, rendered_with_filter)
+        assert diff2.has_changes
+        assert {f.field for c in diff2.changed for f in c.fields} == {"value_type"}

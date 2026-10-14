@@ -163,6 +163,15 @@ class TestImportRules:
         sync_template(json.dumps(desired), client_for(fake), dry_run=False)
         assert json.loads(fake.calls_of("configuration.import")[0]["params"]["source"]) == desired
 
+    def test_accepts_a_version_string(self):
+        assert build_import_rules("6.0.25") == CZ_193_RULES_6_0
+        assert build_import_rules("7.0.5") == CZ_193_RULES_7_0
+        assert build_import_rules("6.4.0rc1") == build_import_rules((6, 4, 0))
+
+    def test_rejects_an_unparseable_version_string(self):
+        with pytest.raises(SyncError):
+            build_import_rules("seven")
+
     def test_rules_follow_server_version(self):
         fake = FakeZabbix(version="6.0.10")
         sync_template(fake_template_doc(TEMPLATE), client_for(fake), dry_run=False)
