@@ -35,6 +35,32 @@ def to_uuid4(val: str) -> str:
     return str(uuid4)
 
 
+# Fixed namespace for stable_uuid(). Changing it re-keys every generated Zabbix object,
+# so it must never change.
+STABLE_UUID_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "https://github.com/wrike/promabbix/zabbix-object-uuid")
+_STABLE_UUID_SEPARATOR = "\x1f"
+
+
+def stable_uuid(template_full_name: str, kind: str, key: str) -> str:
+    """
+    Deterministic Zabbix object UUID derived from the object's stable identity.
+
+    The identity is (template full name, object kind, object key), e.g.
+    ("templ_module_promt_node_exporter", "trigger_prototype", "CPU usage is high").
+    The same identity always yields the same UUID, independent of render time or
+    of the order in which objects appear in the input.
+
+    The digest is UUIDv5 (SHA-1, name based) over STABLE_UUID_NAMESPACE. Zabbix
+    rejects imports whose uuid is not a UUIDv4 ("UUIDv4 is expected"), so the
+    version nibble is forced to 4 and the RFC 4122 variant bits are kept - the same
+    approach to_uuid4() uses. Returns 32 lowercase hex chars without dashes, as
+    Zabbix exports them.
+    """
+    name = _STABLE_UUID_SEPARATOR.join((str(template_full_name), str(kind), str(key)))
+    digest = uuid.uuid5(STABLE_UUID_NAMESPACE, name)
+    return uuid.UUID(bytes=digest.bytes, version=4).hex
+
+
 def get_jinja2_globals() -> Dict[str, Any]:
     return {
         'date_time': date_time,
@@ -60,6 +86,7 @@ def get_jinja2_filters() -> Dict[str, Any]:
         'regex_search': regex_search,
         'to_json': to_json,
         'to_uuid': to_uuid,
+        'stable_uuid': stable_uuid,
         'to_uuid4': to_uuid4,
     }
 
