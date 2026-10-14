@@ -65,11 +65,11 @@
 } }) %}
 {% set _ = ns.update({ "promabbix": (ns.promabbix | combine( (promabbix | default({}) ), list_merge="append_rp", recursive=true)) }) %}
 {% set _ = ns.update({ "prometheus": (ns.prometheus | combine( (prometheus | default({}) ), list_merge="append_rp", recursive=true)) }) %}
-{% set _ = ns.update({ "zbx_items": {} }) %}
+{% set _ = ns.update({ "zbx_items": {}, "trigger_seen": {} }) %}
 {% for r_rule in recording_rules %}
   {% set _ = ns.zbx_items.update({
     r_rule.record: {
-      "uuid": (date_time('%Y%m%dT%H%M%S.%fZ') | to_uuid4 | replace('-', '')),
+      "uuid": (ns.template_full_name | stable_uuid("item", (r_rule.record.split(":")[0] + "[" + (r_rule.record.split(":")[1:] | join(",")) + "]"))),
       "name": r_rule.record,
       "key": (r_rule.record.split(":")[0]),
       "preprocessing": [],
@@ -126,12 +126,18 @@
     {% set discovery_name = (serializeLabelsToZabbixMacros(
       (a_rule.annotations.summary | default(r_rule.record) | string), ns.prometheus.labels_to_zabbix_macros
     ) | to_json(ensure_ascii=False))[1:-1] %}
+    {% set zbx_item_prototype_key = (ns.zbx_items[r_rule.record].key + '[' + (ns.zbx_items[r_rule.record].sub_keys | join(',')) + ',{#ZBX.ITEM.SUBKEY}]') %}
+    {## Trigger identity = item prototype key + trigger name; a repeated identity gets an occurrence suffix (input order) ##}
+    {% set trigger_identity = zbx_item_prototype_key + "|" + discovery_name %}
+    {% set _ = ns.trigger_seen.update({ trigger_identity: (ns.trigger_seen[trigger_identity] | default(0)) + 1 }) %}
+    {% set trigger_key = trigger_identity if ns.trigger_seen[trigger_identity] == 1 else (trigger_identity + "|" + (ns.trigger_seen[trigger_identity] | string)) %}
     {% set alert_rule = {
-      "uuid": (date_time('%Y%m%dT%H%M%S.%fZ') | to_uuid4 | replace('-', '')),
+      "uuid": (ns.template_full_name | stable_uuid("trigger_prototype", trigger_key)),
       "name": discovery_name,
       "opdata": (serializeLabelsToZabbixMacros(a_rule.annotations.description, ns.prometheus.labels_to_zabbix_macros) | to_json(ensure_ascii=False))[1:-1],
       "tags": {
-        "alert": (a_rule.alert | replace(':', '_'))
+        "alert": (a_rule.alert | replace(':', '_')),
+        "wiki_page_tag": (a_rule.alert | replace(':', '_'))
       },
       "zbx_tags": (
         ns.zbx_items[r_rule.record].zbx_tags | combine(
@@ -150,7 +156,6 @@
     {% for tag, value in alert_rule.tags.items() %}
       {% set _ = alert_rule.tags.update({tag: serializeLabelsToZabbixMacros(value, ns.prometheus.labels_to_zabbix_macros)}) %}
     {% endfor %}
-    {% set zbx_item_prototype_key = (ns.zbx_items[r_rule.record].key + '[' + (ns.zbx_items[r_rule.record].sub_keys | join(',')) + ',{#ZBX.ITEM.SUBKEY}]') %}
     {% set zbx_item_prototype_full_key = ("/" + ns.template_full_name + "/" + zbx_item_prototype_key) %}
     {% set zbx_trigger_prototype_expression = (toZabbixExpression(
       a_rule.alert, a_rule.expr, zbx_item_prototype_full_key, ns.prometheus.labels_to_zabbix_macros) | to_json(ensure_ascii=False))[1:-1] | trim %}
@@ -171,6 +176,10 @@
       {% set _ = alert_rule.update({ 
         "description": lookup_template(render_data, serializeLabelsToZabbixMacros(alert_rule.zbx_tags.__zbx_trigger_description, ns.prometheus.labels_to_zabbix_macros)) 
       }) %}
+    {% else %}
+      {% set _ = alert_rule.update({ 
+        "description": ("Wiki: {$WIKI.TAG.URL}" + alert_rule.tags.wiki_page_tag)
+      }) %}
     {% endif %}
     {% set _ = ns.zbx_items[r_rule.record].update({"discovery_name": discovery_name}) %}
     {% set _ = ns.zbx_items[r_rule.record].update({"item_prototype_key": zbx_item_prototype_key}) %}
@@ -190,7 +199,7 @@
     "templates": [
       {
         "uuid": "{{ ns.template_full_name | to_uuid4 | replace('-', '') }}",
-        "template": "{{ template_prefix | default('templ_module_promt_kube') }}_{{ zabbix.template }}",
+        "template": "{{ ns.template_full_name }}",
         "name": "{{ zabbix.name }}",
         "description": "K8S monitoring in Zabbix",
         "groups": [
@@ -222,7 +231,7 @@
         "discovery_rules": [
 {% for k, r_rule in (ns.zbx_items | dictsort) if (r_rule.triggers | length) > 0  %}
           {
-            "uuid": "{{ (date_time('%Y%m%dT%H%M%S.%fZ') | to_uuid4 | replace('-', '')) }}",
+            "uuid": "{{ ns.template_full_name | stable_uuid("discovery_rule", r_rule.discovery_key) }}",
             "name": "{{ r_rule.discovery_key }}",
             "type": "DEPENDENT",
             "key": "{{ r_rule.discovery_key }}",
@@ -239,7 +248,7 @@
             "lifetime": "{{ r_rule.zbx_tags.__zbx_item_lifetime | default('2h') }}",
             "item_prototypes": [
               {
-                "uuid": "{{ (date_time('%Y%m%dT%H%M%S.%fZ') | to_uuid4 | replace('-', '')) }}",
+                "uuid": "{{ ns.template_full_name | stable_uuid("item_prototype", r_rule.item_prototype_key) }}",
                 "name": "{{ r_rule.discovery_name }}",
                 "type": "DEPENDENT",
                 "key": "{{ r_rule.item_prototype_key }}",
@@ -255,7 +264,7 @@
                 "trigger_prototypes": [
   {% for a_rule in r_rule.triggers %}
                   {
-                    "uuid": "{{ (date_time('%Y%m%dT%H%M%S.%fZ') | to_uuid4 | replace('-', '')) }}",
+                    "uuid": "{{ a_rule.uuid }}",
                     "expression": "{{ a_rule.expression }}",
                     "name": "{{ a_rule.name }}",
                     "opdata": "{{ a_rule.opdata }}",
