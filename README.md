@@ -275,6 +275,32 @@ wiki:
             ...
 ```
 
+### Validation rules
+
+`--validate-only` checks the configuration against the schema and runs these additional checks:
+
+* **Trigger name length.** `annotations.summary` becomes the Zabbix trigger and item prototype name, which is limited
+  to 255 characters. The length is counted after `{{$labels.X}}` is replaced with `{#X}` and `{{$value}}` with
+  `{ITEM.VALUE1}`. Put diagnostic detail in `annotations.description` or the wiki section instead.
+* **Escaping of `__zbx_*` tags.** The template JSON-escapes `expr` and the annotations itself, so quotes there are
+  written as-is. The values of `__zbx_trigger_expression`, `__zbx_trigger_description`, `__zbx_item_url`,
+  `__zbx_item_delay`, `__zbx_item_timeout`, `__zbx_item_lifetime`, `__zbx_history`, `__zbx_trends`,
+  `__zbx_item_units` and `__zbx_priority` are inserted into the generated JSON unescaped, so after YAML parsing they
+  must already be valid JSON string content: every `"` must be written as `\"`. In a YAML double-quoted string that
+  is `\\\"`, because `\"` is parsed by YAML into a bare `"`. In a YAML single-quoted string write `\"`.
+
+```yaml
+labels:
+  # wrong: YAML turns \" into a bare " and the generated template is broken
+  __zbx_trigger_expression: "min({{item_full_key}},{$X.TIME})>{$X.RATE:\"{{$labels.k8s_cluster}}\"}"
+  # right
+  __zbx_trigger_expression: "min({{item_full_key}},{$X.TIME})>{$X.RATE:\\\"{{$labels.k8s_cluster}}\\\"}"
+```
+
+The loader discards YAML comments, so validation cannot see text that was dropped by accident. A closing quote
+followed by more text (`summary: "short" rest of the sentence`, or ` # ...` after a plain scalar) silently truncates
+the value. Keep long text inside the quotes and let the length check report it.
+
 ### Examples
 
 * Generated pseudo-hosts in Zabbix

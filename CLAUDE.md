@@ -29,8 +29,8 @@ Promabbix is a tool that connects Prometheus to Zabbix monitoring. It converts P
   - Supports both structured data and string content with smart format handling
 - **validation.py**: Comprehensive configuration validation system
   - `ConfigValidator`: Schema validation with enhanced error reporting (supports both YAML and JSON schemas)
-  - `CrossReferenceValidator`: Validates consistency between config sections
-  - `SchemaValidator`: JSON Schema validation with detailed error messages and suggestions
+  - `ConfigValidator.validate_json_schema`: JSON Schema validation (via the `jsonschema` library) with detailed error messages and suggestions
+  - `CrossReferenceValidator`: Validates consistency between config sections, summary length against the Zabbix name limit (`validate_summary_lengths`), and escaping of the raw-emitted `__zbx_*` tags (`validate_zabbix_tag_escaping`)
   - Wiki documentation validation for alerts (optional but recommended)
   - Uses `unified.yaml` schema by default (backward compatible with JSON schemas)
 - **migration.py**: Legacy format migration utilities
@@ -136,7 +136,7 @@ The test suite uses pytest with comprehensive mocking strategy and achieves high
 - **test_schema_examples.py**: Schema validation tests with comprehensive examples and edge cases
 - **test_fs_utils.py**: File system operations and data format handling
 - **test_promabbix_app.py**: Main application and CLI integration tests
-- **test_cli_validation_integration.py**: End-to-end CLI validation workflow
+- **test_cli_generate_template.py**: CLI generateTemplate command, including `--validate-only` flows
 - **test_unified_format_file_processing.py**: Unified format processing and backwards compatibility
 - **test_validation_wiki_optional.py**: Wiki section validation (optional sections)
 - **test_config_without_wiki.py**: Configuration validation without wiki documentation
@@ -255,8 +255,7 @@ This project maintains strict code quality standards enforced by CI/CD:
 - **Cross-Reference Validation**: Validates consistency between alerts and wiki documentation
 - **Optional Wiki Sections**: Wiki documentation is optional but validated when present
 - **Enhanced Error Messages**: Detailed validation errors with actionable suggestions
-- **Custom Schema Validation**: Replaced jsonschema library with custom validator that interprets unified.yaml schema
-- **Dependency Reduction**: Removed complex jsonschema dependencies while maintaining full validation functionality
+- **Schema Validation**: `jsonschema` library validates the config against `unified.yaml`
 
 ### Testing Improvements
 - **200 Tests**: Comprehensive test suite covering all functionality
@@ -267,6 +266,5 @@ This project maintains strict code quality standards enforced by CI/CD:
 
 ### Latest Updates (September 2025)
 - **✅ Step 1b Complete**: generateTemplate command fully implemented with all quality gates passed
-- **✅ Dependency Modernization**: Replaced jsonschema library with custom validator to reduce dependency complexity
 - **✅ Quality Standards**: All code quality checks passing (flake8: 0 errors, mypy: 0 errors)
 - **✅ Test Coverage**: 213 tests passing out of 234 total (21 remaining failures in schema validation edge cases)
