@@ -338,13 +338,29 @@ class TestDiffTemplate:
         (change,) = diff_template(live, desired).changed
         assert change.fields[0].new is None  # default omitted == unset
 
-    def test_live_only_linked_templates_dashboards_and_valuemaps_ignored(self) -> None:
+    def test_live_only_valuemaps_are_ignored(self) -> None:
         live = make_export()
-        tpl_of(live)["templates"] = [{"name": "Linked by hand"}]
-        tpl_of(live)["dashboards"] = [{"name": "Dash"}]
         tpl_of(live)["valuemaps"] = [{"name": "VM", "mappings": [{"value": "0", "newvalue": "Down"}]}]
         diff = diff_template(live, make_export())
-        assert not diff.has_changes
+        assert not diff.has_changes and diff.removals == 0
+
+    def test_live_only_linked_template_and_dashboard_are_destructive_removals(self) -> None:
+        live = make_export()
+        tpl_of(live)["templates"] = [{"name": "Linked by hand"}]
+        tpl_of(live)["dashboards"] = [{"name": "Dash", "pages": [{"widgets": []}]}]
+        diff = diff_template(live, make_export())
+        assert diff.has_changes and diff.removals == 2
+        assert paths(diff.removed) == ['linked_template "Linked by hand"', 'dashboard "Dash"']
+        text = diff.render().splitlines()
+        assert '!!! REMOVE linked_template "Linked by hand"' in text
+        assert '!!! REMOVE dashboard "Dash"' in text
+
+    def test_linked_template_and_dashboard_present_on_both_sides_are_no_change(self) -> None:
+        live, desired = make_export(), make_export()
+        for doc in (live, desired):
+            tpl_of(doc)["templates"] = [{"name": "Linux by Zabbix agent"}]
+            tpl_of(doc)["dashboards"] = [{"name": "Dash"}]
+        assert not diff_template(live, desired).has_changes
 
     def test_desired_linked_template_is_added(self) -> None:
         desired = make_export()

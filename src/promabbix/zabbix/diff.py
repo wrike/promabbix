@@ -45,8 +45,10 @@ on Zabbix 6/7, or by promabbix's own generator, which uses the same shape):
   prototypes).  Those removals are *destructive*: they delete history and are
   counted in ``removals`` and rendered with ``!!! REMOVE``.  Macros and tags
   removals are reported in ``removed`` but are not counted in ``removals``.
-  Live-only linked templates, dashboards and value maps are ignored because the
-  import never removes them.
+  Live-only linked templates and dashboards are removals too (the import runs with
+  ``deleteMissing`` for ``templateLinkage`` and ``templateDashboards``) and are
+  rendered with ``!!! REMOVE``.  Live-only value maps are ignored: ``valueMaps`` has
+  no ``deleteMissing``.
 
 Host side (``host.get`` style or promabbix ``zabbix.hosts[]`` style, both are
 accepted, see ``_HOST_ALIASES``):
@@ -132,8 +134,10 @@ _CHILDREN: Dict[str, Dict[str, _Child]] = {
         "macros": _MACRO,
         "tags": _TAG,
         "groups": _GROUP,
-        "templates": _Child("linked_template", ("name",), ignore_live_only=True),
-        "dashboards": _Child("dashboard", ("name",), ignore_live_only=True),
+        # the import rules carry deleteMissing for templateLinkage and templateDashboards (community.zabbix
+        # 1.9.3 parity, see sync.build_import_rules), so live-only links and dashboards ARE removed
+        "templates": _Child("linked_template", ("name",), destructive=True),
+        "dashboards": _Child("dashboard", ("name",), destructive=True),
         "valuemaps": _Child("valuemap", ("name",), ignore_live_only=True),
     },
     "item": {"tags": _OBJ_TAG},
