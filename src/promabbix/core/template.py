@@ -35,9 +35,6 @@ def to_uuid4(val: str) -> str:
     return str(uuid4)
 
 
-# Fixed namespace for stable_uuid(). Changing it re-keys every generated Zabbix object,
-# so it must never change.
-STABLE_UUID_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "https://github.com/wrike/promabbix/zabbix-object-uuid")
 _STABLE_UUID_SEPARATOR = "\x1f"
 
 
@@ -50,15 +47,17 @@ def stable_uuid(template_full_name: str, kind: str, key: str) -> str:
     The same identity always yields the same UUID, independent of render time or
     of the order in which objects appear in the input.
 
-    The digest is UUIDv5 (SHA-1, name based) over STABLE_UUID_NAMESPACE. Zabbix
-    rejects imports whose uuid is not a UUIDv4 ("UUIDv4 is expected"), so the
-    version nibble is forced to 4 and the RFC 4122 variant bits are kept - the same
-    approach to_uuid4() uses. Returns 32 lowercase hex chars without dashes, as
-    Zabbix exports them.
+    This is a deterministic, v4-formatted, name-based hash: md5 of the joined
+    identity, stamped as UUIDv4 by to_uuid4(). Zabbix's import validator
+    (CApiInputValidator::validateUuid) requires the version nibble 4 and the
+    RFC 4122 variant bits, otherwise it rejects the import with "UUIDv4 is
+    expected". Returns 32 lowercase hex chars without dashes, as Zabbix exports them.
+
+    The formula must not change once uuids have been pushed to Zabbix: changing it
+    re-keys every generated object.
     """
-    name = _STABLE_UUID_SEPARATOR.join((str(template_full_name), str(kind), str(key)))
-    digest = uuid.uuid5(STABLE_UUID_NAMESPACE, name)
-    return uuid.UUID(bytes=digest.bytes, version=4).hex
+    identity = _STABLE_UUID_SEPARATOR.join((str(template_full_name), str(kind), str(key)))
+    return to_uuid4(identity).replace("-", "")
 
 
 def get_jinja2_globals() -> Dict[str, Any]:
