@@ -1,0 +1,39 @@
+groups:
+  - name: recording_rules
+    rules:
+      - record: node_cpu:utilization:percent
+        expr: 100 * (1 - avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])))
+      - record: node_memory:utilization:percent
+        expr: 100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)
+  - name: alerting_rules
+    rules:
+      - alert: node_cpu:utilization:percent
+        expr: node_cpu:utilization:percent >= {$NODE.CPU.UTIL.MAX}
+        for: 5m
+        annotations:
+          summary: CPU utilization on {{ $labels.instance }} above {$NODE.CPU.UTIL.MAX}%
+          description: instance {{ $labels.instance }} value {{ $value }}
+        labels:
+          __zbx_priority: WARNING
+      - alert: node_memory:utilization:percent
+        expr: node_memory:utilization:percent >= {$NODE.MEM.UTIL.MAX}
+        annotations:
+          summary: Memory utilization on {{ $labels.instance }} above {$NODE.MEM.UTIL.MAX}%
+          description: instance {{ $labels.instance }} value {{ $value }}
+prometheus:
+  api:
+    url: "http://prometheus.example.svc:9090/api/v1/query"
+zabbix:
+  template: node_exporter
+  name: "Template Module Prometheus node_exporter"
+  labels:
+    __event_recovery_notify: "1"
+  macros:
+    - macro: "{$NODE.CPU.UTIL.MAX}"
+      value: "90"
+      description: CPU limit
+    - macro: "{$NODE.MEM.UTIL.MAX}"
+      value: "85"
+  tags:
+    - tag: Application
+      value: node_exporter

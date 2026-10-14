@@ -1,0 +1,464 @@
+{
+  "zabbix_export": {
+    "version": "7.0",
+    "date": "2025-01-01T00:00:00Z",
+    "templates": [
+      {
+        "uuid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "template": "templ_module_promt_kube_node_exporter",
+        "name": "Template Module Prometheus node_exporter",
+        "description": "K8S monitoring in Zabbix",
+        "groups": [
+          {
+            "name": "Templates"
+          }
+        ],
+        "items": [
+          {
+            "uuid": "00000000000000000000000000000002",
+            "name": "node_memory:utilization:percent",
+            "type": "HTTP_AGENT",
+            "key": "node_memory[utilization,percent]",
+            "delay": "30s",
+            "history": "0",
+            "trends": "0",
+            "value_type": "TEXT",
+            "preprocessing": [
+              {
+                "type": "JAVASCRIPT",
+                "parameters": [
+                  "var ingest_json = JSON.parse(value),\n    metrics = ingest_json.data.result || [],\n    result = { \"lld\": [], \"metrics\": {} },\n    maxDynamicTags = 10;\n\nfor (var i = 0, metricsLength = metrics.length; i < metricsLength; i++) {\n    var metric = metrics[i],\n        metricObj = metric.metric,\n        keys = Object.keys(metricObj);\n\n    var llds = {},\n        label_values = [],\n        j = 0;\n\n    for (; j < keys.length && j < maxDynamicTags; j++) {\n        var key = keys[j];\n        var val = metricObj[key];\n        llds[\"{#\" + key.toUpperCase() + \"}\"] = val;\n        llds[\"{#TAG\" + j + \"KEY}\"] = key;\n        llds[\"{#TAG\" + j + \"VAL}\"] = val;\n        label_values.push(val);\n    }\n\n    for (; j < maxDynamicTags; j++) {\n        llds[\"{#TAG\" + j + \"KEY}\"] = \"zbx_dyntag\";\n        llds[\"{#TAG\" + j + \"VAL}\"] = \"zbx_tag\" + j;\n    }\n\n    var subkey = label_values.join(';');\n    llds[\"{#ZBX.ITEM.SUBKEY}\"] = subkey;\n    result.lld.push(llds);\n\n    var metricValue = metric.value[1];\n    result.metrics[subkey] = metricValue ? parseFloat(metricValue).toFixed(2) : \"NaN\";\n}\n\nreturn JSON.stringify(result);"
+                ]
+              }
+            ],
+            "timeout": "30s",
+            "url": "http://prometheus.example.svc:9090/api/v1/query",
+            "posts": "query=100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)",
+            "request_method": "POST",
+            "tags": [
+              {
+                "tag": "Application",
+                "value": "Metrics"
+              }
+            ]
+          },
+          {
+            "uuid": "00000000000000000000000000000001",
+            "name": "node_cpu:utilization:percent",
+            "type": "HTTP_AGENT",
+            "key": "node_cpu[utilization,percent]",
+            "delay": "30s",
+            "history": "0",
+            "trends": "0",
+            "value_type": "TEXT",
+            "preprocessing": [
+              {
+                "type": "JAVASCRIPT",
+                "parameters": [
+                  "var ingest_json = JSON.parse(value),\n    metrics = ingest_json.data.result || [],\n    result = { \"lld\": [], \"metrics\": {} },\n    maxDynamicTags = 10;\n\nfor (var i = 0, metricsLength = metrics.length; i < metricsLength; i++) {\n    var metric = metrics[i],\n        metricObj = metric.metric,\n        keys = Object.keys(metricObj);\n\n    var llds = {},\n        label_values = [],\n        j = 0;\n\n    for (; j < keys.length && j < maxDynamicTags; j++) {\n        var key = keys[j];\n        var val = metricObj[key];\n        llds[\"{#\" + key.toUpperCase() + \"}\"] = val;\n        llds[\"{#TAG\" + j + \"KEY}\"] = key;\n        llds[\"{#TAG\" + j + \"VAL}\"] = val;\n        label_values.push(val);\n    }\n\n    for (; j < maxDynamicTags; j++) {\n        llds[\"{#TAG\" + j + \"KEY}\"] = \"zbx_dyntag\";\n        llds[\"{#TAG\" + j + \"VAL}\"] = \"zbx_tag\" + j;\n    }\n\n    var subkey = label_values.join(';');\n    llds[\"{#ZBX.ITEM.SUBKEY}\"] = subkey;\n    result.lld.push(llds);\n\n    var metricValue = metric.value[1];\n    result.metrics[subkey] = metricValue ? parseFloat(metricValue).toFixed(2) : \"NaN\";\n}\n\nreturn JSON.stringify(result);"
+                ]
+              }
+            ],
+            "timeout": "30s",
+            "url": "http://prometheus.example.svc:9090/api/v1/query",
+            "posts": "query=100 * (1 - avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])))",
+            "request_method": "POST",
+            "tags": [
+              {
+                "tag": "Application",
+                "value": "Metrics"
+              }
+            ]
+          },
+          {
+            "uuid": "00000000000000000000000000000002",
+            "name": "node_disk:utilization:percent",
+            "type": "HTTP_AGENT",
+            "key": "node_disk[utilization,percent]",
+            "delay": "30s",
+            "history": "0",
+            "trends": "0",
+            "value_type": "TEXT",
+            "preprocessing": [
+              {
+                "type": "JAVASCRIPT",
+                "parameters": [
+                  "var ingest_json = JSON.parse(value),\n    metrics = ingest_json.data.result || [],\n    result = { \"lld\": [], \"metrics\": {} },\n    maxDynamicTags = 10;\n\nfor (var i = 0, metricsLength = metrics.length; i < metricsLength; i++) {\n    var metric = metrics[i],\n        metricObj = metric.metric,\n        keys = Object.keys(metricObj);\n\n    var llds = {},\n        label_values = [],\n        j = 0;\n\n    for (; j < keys.length && j < maxDynamicTags; j++) {\n        var key = keys[j];\n        var val = metricObj[key];\n        llds[\"{#\" + key.toUpperCase() + \"}\"] = val;\n        llds[\"{#TAG\" + j + \"KEY}\"] = key;\n        llds[\"{#TAG\" + j + \"VAL}\"] = val;\n        label_values.push(val);\n    }\n\n    for (; j < maxDynamicTags; j++) {\n        llds[\"{#TAG\" + j + \"KEY}\"] = \"zbx_dyntag\";\n        llds[\"{#TAG\" + j + \"VAL}\"] = \"zbx_tag\" + j;\n    }\n\n    var subkey = label_values.join(';');\n    llds[\"{#ZBX.ITEM.SUBKEY}\"] = subkey;\n    result.lld.push(llds);\n\n    var metricValue = metric.value[1];\n    result.metrics[subkey] = metricValue ? parseFloat(metricValue).toFixed(2) : \"NaN\";\n}\n\nreturn JSON.stringify(result);"
+                ]
+              }
+            ],
+            "timeout": "30s",
+            "url": "http://prometheus.example.svc:9090/api/v1/query",
+            "posts": "query=100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)",
+            "request_method": "POST",
+            "tags": [
+              {
+                "tag": "Application",
+                "value": "Metrics"
+              }
+            ]
+          }
+        ],
+        "discovery_rules": [
+          {
+            "uuid": "00000000000000000000000000000065",
+            "name": "node_memory[utilization,percent,ldd]",
+            "type": "DEPENDENT",
+            "key": "node_memory[utilization,percent,ldd]",
+            "lifetime": "2h",
+            "item_prototypes": [
+              {
+                "uuid": "000000000000000000000000000000c9",
+                "name": "Memory utilization on {#INSTANCE} above {$NODE.MEM.UTIL.MAX}%",
+                "type": "DEPENDENT",
+                "key": "node_memory[utilization,percent,{#ZBX.ITEM.SUBKEY}]",
+                "history": "1d",
+                "trends": "14d",
+                "value_type": "FLOAT",
+                "preprocessing": [
+                  {
+                    "type": "JSONPATH",
+                    "parameters": [
+                      "$.metrics[\"{#ZBX.ITEM.SUBKEY}\"]"
+                    ],
+                    "error_handler": "DISCARD_VALUE"
+                  },
+                  {
+                    "type": "DISCARD_UNCHANGED_HEARTBEAT",
+                    "parameters": [
+                      "2m"
+                    ]
+                  }
+                ],
+                "master_item": {
+                  "key": "node_memory[utilization,percent]"
+                },
+                "tags": [
+                  {
+                    "tag": "{#TAG0KEY}",
+                    "value": "{#TAG0VAL}"
+                  },
+                  {
+                    "tag": "{#TAG1KEY}",
+                    "value": "{#TAG1VAL}"
+                  },
+                  {
+                    "tag": "{#TAG2KEY}",
+                    "value": "{#TAG2VAL}"
+                  },
+                  {
+                    "tag": "{#TAG3KEY}",
+                    "value": "{#TAG3VAL}"
+                  },
+                  {
+                    "tag": "{#TAG4KEY}",
+                    "value": "{#TAG4VAL}"
+                  },
+                  {
+                    "tag": "{#TAG5KEY}",
+                    "value": "{#TAG5VAL}"
+                  },
+                  {
+                    "tag": "{#TAG6KEY}",
+                    "value": "{#TAG6VAL}"
+                  },
+                  {
+                    "tag": "{#TAG7KEY}",
+                    "value": "{#TAG7VAL}"
+                  },
+                  {
+                    "tag": "{#TAG8KEY}",
+                    "value": "{#TAG8VAL}"
+                  },
+                  {
+                    "tag": "{#TAG9KEY}",
+                    "value": "{#TAG9VAL}"
+                  }
+                ]
+              }
+            ],
+            "master_item": {
+              "key": "node_memory[utilization,percent]"
+            },
+            "preprocessing": [
+              {
+                "type": "JSONPATH",
+                "parameters": [
+                  "$.lld"
+                ],
+                "error_handler": "CUSTOM_VALUE",
+                "error_handler_params": "[]"
+              }
+            ],
+            "overrides": [],
+            "trigger_prototypes": [
+              {
+                "uuid": "0000000000000000000000000000012d",
+                "expression": "last(/templ_module_promt_kube_node_exporter/node_memory[utilization,percent,{#ZBX.ITEM.SUBKEY}])>{$NODE.MEM.UTIL.MAX}",
+                "name": "Memory utilization on {#INSTANCE} above {$NODE.MEM.UTIL.MAX}%",
+                "opdata": "instance {#INSTANCE} value {ITEM.VALUE1}",
+                "priority": "AVERAGE",
+                "description": "",
+                "manual_close": "YES",
+                "tags": [
+                  {
+                    "tag": "__event_recovery_notify",
+                    "value": "1"
+                  },
+                  {
+                    "tag": "alert",
+                    "value": "node_memory_utilization_percent"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "uuid": "00000000000000000000000000000064",
+            "name": "node_cpu[utilization,percent,ldd]",
+            "type": "DEPENDENT",
+            "key": "node_cpu[utilization,percent,ldd]",
+            "lifetime": "2h",
+            "item_prototypes": [
+              {
+                "uuid": "000000000000000000000000000000c8",
+                "name": "CPU utilization on {#INSTANCE} above {$NODE.CPU.UTIL.MAX}%",
+                "type": "DEPENDENT",
+                "key": "node_cpu[utilization,percent,{#ZBX.ITEM.SUBKEY}]",
+                "history": "1d",
+                "trends": "14d",
+                "value_type": "FLOAT",
+                "preprocessing": [
+                  {
+                    "type": "JSONPATH",
+                    "parameters": [
+                      "$.metrics[\"{#ZBX.ITEM.SUBKEY}\"]"
+                    ],
+                    "error_handler": "DISCARD_VALUE"
+                  },
+                  {
+                    "type": "DISCARD_UNCHANGED_HEARTBEAT",
+                    "parameters": [
+                      "2m"
+                    ]
+                  }
+                ],
+                "master_item": {
+                  "key": "node_cpu[utilization,percent]"
+                },
+                "tags": [
+                  {
+                    "tag": "{#TAG0KEY}",
+                    "value": "{#TAG0VAL}"
+                  },
+                  {
+                    "tag": "{#TAG1KEY}",
+                    "value": "{#TAG1VAL}"
+                  },
+                  {
+                    "tag": "{#TAG2KEY}",
+                    "value": "{#TAG2VAL}"
+                  },
+                  {
+                    "tag": "{#TAG3KEY}",
+                    "value": "{#TAG3VAL}"
+                  },
+                  {
+                    "tag": "{#TAG4KEY}",
+                    "value": "{#TAG4VAL}"
+                  },
+                  {
+                    "tag": "{#TAG5KEY}",
+                    "value": "{#TAG5VAL}"
+                  },
+                  {
+                    "tag": "{#TAG6KEY}",
+                    "value": "{#TAG6VAL}"
+                  },
+                  {
+                    "tag": "{#TAG7KEY}",
+                    "value": "{#TAG7VAL}"
+                  },
+                  {
+                    "tag": "{#TAG8KEY}",
+                    "value": "{#TAG8VAL}"
+                  },
+                  {
+                    "tag": "{#TAG9KEY}",
+                    "value": "{#TAG9VAL}"
+                  }
+                ]
+              }
+            ],
+            "master_item": {
+              "key": "node_cpu[utilization,percent]"
+            },
+            "preprocessing": [
+              {
+                "type": "JSONPATH",
+                "parameters": [
+                  "$.lld"
+                ],
+                "error_handler": "CUSTOM_VALUE",
+                "error_handler_params": "[]"
+              }
+            ],
+            "overrides": [],
+            "trigger_prototypes": [
+              {
+                "uuid": "0000000000000000000000000000012c",
+                "expression": "last(/templ_module_promt_kube_node_exporter/node_cpu[utilization,percent,{#ZBX.ITEM.SUBKEY}])>={$NODE.CPU.UTIL.MAX}",
+                "name": "CPU utilization on {#INSTANCE} above {$NODE.CPU.UTIL.MAX}%",
+                "opdata": "instance {#INSTANCE} value {ITEM.VALUE1}",
+                "priority": "WARNING",
+                "description": "",
+                "manual_close": "YES",
+                "tags": [
+                  {
+                    "tag": "__event_delay",
+                    "value": "5m"
+                  },
+                  {
+                    "tag": "__event_recovery_notify",
+                    "value": "1"
+                  },
+                  {
+                    "tag": "alert",
+                    "value": "node_cpu_utilization_percent"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "uuid": "cccccccccccccccccccccccccccccccc",
+            "name": "node_disk[utilization,percent,ldd]",
+            "type": "DEPENDENT",
+            "key": "node_disk[utilization,percent,ldd]",
+            "lifetime": "2h",
+            "item_prototypes": [
+              {
+                "uuid": "000000000000000000000000000000c9",
+                "name": "Disk utilization on {#INSTANCE}",
+                "type": "DEPENDENT",
+                "key": "node_disk[utilization,percent,{#ZBX.ITEM.SUBKEY}]",
+                "history": "1d",
+                "trends": "14d",
+                "value_type": "FLOAT",
+                "preprocessing": [
+                  {
+                    "type": "JSONPATH",
+                    "parameters": [
+                      "$.metrics[\"{#ZBX.ITEM.SUBKEY}\"]"
+                    ],
+                    "error_handler": "DISCARD_VALUE"
+                  },
+                  {
+                    "type": "DISCARD_UNCHANGED_HEARTBEAT",
+                    "parameters": [
+                      "2m"
+                    ]
+                  }
+                ],
+                "master_item": {
+                  "key": "node_memory[utilization,percent]"
+                },
+                "tags": [
+                  {
+                    "tag": "{#TAG0KEY}",
+                    "value": "{#TAG0VAL}"
+                  },
+                  {
+                    "tag": "{#TAG1KEY}",
+                    "value": "{#TAG1VAL}"
+                  },
+                  {
+                    "tag": "{#TAG2KEY}",
+                    "value": "{#TAG2VAL}"
+                  },
+                  {
+                    "tag": "{#TAG3KEY}",
+                    "value": "{#TAG3VAL}"
+                  },
+                  {
+                    "tag": "{#TAG4KEY}",
+                    "value": "{#TAG4VAL}"
+                  },
+                  {
+                    "tag": "{#TAG5KEY}",
+                    "value": "{#TAG5VAL}"
+                  },
+                  {
+                    "tag": "{#TAG6KEY}",
+                    "value": "{#TAG6VAL}"
+                  },
+                  {
+                    "tag": "{#TAG7KEY}",
+                    "value": "{#TAG7VAL}"
+                  },
+                  {
+                    "tag": "{#TAG8KEY}",
+                    "value": "{#TAG8VAL}"
+                  },
+                  {
+                    "tag": "{#TAG9KEY}",
+                    "value": "{#TAG9VAL}"
+                  }
+                ]
+              }
+            ],
+            "master_item": {
+              "key": "node_disk[utilization,percent]"
+            },
+            "preprocessing": [
+              {
+                "type": "JSONPATH",
+                "parameters": [
+                  "$.lld"
+                ],
+                "error_handler": "CUSTOM_VALUE",
+                "error_handler_params": "[]"
+              }
+            ],
+            "overrides": [],
+            "trigger_prototypes": [
+              {
+                "uuid": "dddddddddddddddddddddddddddddddd",
+                "expression": "last(/templ_module_promt_kube_node_exporter/node_disk[utilization,percent,{#ZBX.ITEM.SUBKEY}])>90",
+                "name": "Disk utilization on {#INSTANCE}",
+                "priority": "AVERAGE"
+              }
+            ]
+          }
+        ],
+        "tags": [
+          {
+            "tag": "Application",
+            "value": "node_exporter"
+          }
+        ],
+        "macros": [
+          {
+            "macro": "{$NODE.CPU.UTIL.MAX}",
+            "value": "90",
+            "description": "CPU limit"
+          },
+          {
+            "macro": "{$NODE.MEM.UTIL.MAX}",
+            "value": "80"
+          }
+        ],
+        "vendor": {
+          "name": "Wrike",
+          "version": "1"
+        }
+      }
+    ],
+    "template_groups": [
+      {
+        "uuid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "name": "Templates"
+      }
+    ]
+  }
+}
