@@ -1,0 +1,14 @@
+wiki:
+  templates:
+    wrike_alert_config:
+      templates:
+        - name: 'node_exporter'
+          title: 'Wrike SysOps alert for Talos k8s node monitoring via node-exporter'
+  knowledgebase:
+    alerts:
+      alertings:
+        "node_cpu:utilization:percent":
+          title: "Node CPU utilization high"
+          content: |
+            # Overview
+            CPU utilization on a Talos k8s worker node exceeds the configured threshold.

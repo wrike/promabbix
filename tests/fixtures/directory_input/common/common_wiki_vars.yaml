@@ -1,0 +1,15 @@
+wiki:
+  url: 'https://wiki.wrke.in'
+  base_space_path: 'SysOps/Monitoring System'
+  knowledgebase:
+    space_path: 'Knowledgebase'
+    how_to:
+      space_path: 'How to'
+    alerts:
+      space_path: 'Alerts'
+  templates:
+    space_path: 'Templates'
+    zabbix:
+      space_path: 'Zabbix'
+    wrike_alert_config:
+      space_path: 'Wrike alert config'

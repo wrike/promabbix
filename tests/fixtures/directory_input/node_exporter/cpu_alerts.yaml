@@ -1,0 +1,167 @@
+groups:
+  - name: recording_rules
+    rules:
+      - record: node_cpu:utilization:percent
+        expr: >-
+          label_replace(
+          label_move(
+            label_copy(
+            (1 - avg by(instance, k8s_cluster)(rate(node_cpu_seconds_total{mode="idle"}[5m]))) * 100
+            * on(instance, k8s_cluster) group_left(nodename)
+            limitk(1, node_uname_info) by(instance, k8s_cluster),
+            "instance", "node_addr"
+            ),
+            "nodename", "instance"
+          ),
+          "node_addr", "$1", "node_addr", "([^:]+):.+"
+          )
+      - record: node_cpu:system:percent
+        expr: >-
+          label_replace(
+          label_move(
+            label_copy(
+            avg by(instance, k8s_cluster)(rate(node_cpu_seconds_total{mode="system"}[5m])) * 100
+            * on(instance, k8s_cluster) group_left(nodename)
+            limitk(1, node_uname_info) by(instance, k8s_cluster),
+            "instance", "node_addr"
+            ),
+            "nodename", "instance"
+          ),
+          "node_addr", "$1", "node_addr", "([^:]+):.+"
+          )
+      - record: node_cpu:user:percent
+        expr: >-
+          label_replace(
+          label_move(
+            label_copy(
+            avg by(instance, k8s_cluster)(rate(node_cpu_seconds_total{mode="user"}[5m])) * 100
+            * on(instance, k8s_cluster) group_left(nodename)
+            limitk(1, node_uname_info) by(instance, k8s_cluster),
+            "instance", "node_addr"
+            ),
+            "nodename", "instance"
+          ),
+          "node_addr", "$1", "node_addr", "([^:]+):.+"
+          )
+      - record: node_cpu:steal:percent
+        expr: >-
+          label_replace(
+          label_move(
+            label_copy(
+            avg by(instance, k8s_cluster)(rate(node_cpu_seconds_total{mode="steal"}[5m])) * 100
+            * on(instance, k8s_cluster) group_left(nodename)
+            limitk(1, node_uname_info) by(instance, k8s_cluster),
+            "instance", "node_addr"
+            ),
+            "nodename", "instance"
+          ),
+          "node_addr", "$1", "node_addr", "([^:]+):.+"
+          )
+      - record: node_cpu:iowait:percent
+        expr: >-
+          label_replace(
+          label_move(
+            label_copy(
+            avg by(instance, k8s_cluster)(rate(node_cpu_seconds_total{mode="iowait"}[5m])) * 100
+            * on(instance, k8s_cluster) group_left(nodename)
+            limitk(1, node_uname_info) by(instance, k8s_cluster),
+            "instance", "node_addr"
+            ),
+            "nodename", "instance"
+          ),
+          "node_addr", "$1", "node_addr", "([^:]+):.+"
+          )
+      - record: node_cpu:load_avg_percpu:ratio
+        expr: >-
+          label_replace(
+          label_move(
+            label_copy(
+            avg by(instance, k8s_cluster)(node_load5)
+            / count by(instance, k8s_cluster)(node_cpu_seconds_total{mode="idle"})
+            * on(instance, k8s_cluster) group_left(nodename)
+            limitk(1, node_uname_info) by(instance, k8s_cluster),
+            "instance", "node_addr"
+            ),
+            "nodename", "instance"
+          ),
+          "node_addr", "$1", "node_addr", "([^:]+):.+"
+          )
+  - name: alerting_rules
+    rules:
+      - alert: node_cpu:utilization:percent
+        expr: node_cpu:utilization:percent > {$NODE.CPU.UTIL.WARN:"{{$labels.instance}}"}
+        # NOTE: `for:` alone would NOT gate Zabbix trigger firing - promabbix only copies it into
+        # an __event_delay event tag, not a time window in the trigger expression (which defaults
+        # to a bare `last(item) > threshold`). To make the sustained-duration requirement real,
+        # __zbx_trigger_expression below overrides the generated expression to wrap the item in
+        # Zabbix's own min() function over {$NODE.CPU.UTIL.WARN.TIME}, so the Problem only opens
+        # once EVERY sample in that window is above threshold (confirmed working pattern - see
+        # __zbx_trigger_expression override in labels).
+        for: "{$NODE.CPU.UTIL.WARN.TIME}"
+        annotations:
+          description: 'k8s_cluster: "{{$labels.k8s_cluster}}" instance: "{{$labels.instance}}" value: "{{$value}}"'
+          summary: CPU utilization above {$NODE.CPU.UTIL.WARN:"{{$labels.instance}}"}% on {{$labels.instance}} [{{$labels.node_addr}}]
+        labels:
+          __zbx_priority: "AVERAGE"
+          # Overrides the default `last(item) > threshold` trigger expression with a real
+          # sustained-duration check: min() requires every sample over the window to breach
+          # the threshold before the Problem opens (unlike `for:`, which promabbix ignores here).
+          __zbx_trigger_expression: "min({{item_full_key}},{$NODE.CPU.UTIL.WARN.TIME})>{$NODE.CPU.UTIL.WARN}"
+          grafana_dashboard: "V3p8oIzWz2/node-exporter-metrics?orgId=1&var-datasource=VictoriaMetrics&var-job=node-exporter&var-node={{$labels.node_addr}}&from=now-3h&to=now&viewPanel=3"
+      - alert: node_cpu:system:percent
+        expr: node_cpu:system:percent > {$NODE.CPU.SYS.WARN:"{{$labels.instance}}"}
+        for: 5m
+        annotations:
+          description: 'k8s_cluster: "{{$labels.k8s_cluster}}" instance: "{{$labels.instance}}" value: "{{$value}}"'
+          summary: CPU system above {$NODE.CPU.SYS.WARN:"{{$labels.instance}}"}% on {{$labels.instance}} [{{$labels.node_addr}}]
+        labels:
+          __zbx_priority: "HIGH"
+          grafana_dashboard: "V3p8oIzWz2/node-exporter-metrics?orgId=1&var-datasource=VictoriaMetrics&var-job=node-exporter&var-node={{$labels.node_addr}}&from=now-3h&to=now&viewPanel=3"
+      - alert: node_cpu:system_crit:percent
+        expr: node_cpu:system:percent > {$NODE.CPU.SYS.CRIT:"{{$labels.instance}}"}
+        for: 5m
+        annotations:
+          description: 'k8s_cluster: "{{$labels.k8s_cluster}}" instance: "{{$labels.instance}}" value: "{{$value}}"'
+          summary: CPU system critically high above {$NODE.CPU.SYS.CRIT:"{{$labels.instance}}"}% on {{$labels.instance}} [{{$labels.node_addr}}]
+        labels:
+          __zbx_priority: "DISASTER"
+          grafana_dashboard: "V3p8oIzWz2/node-exporter-metrics?orgId=1&var-datasource=VictoriaMetrics&var-job=node-exporter&var-node={{$labels.node_addr}}&from=now-3h&to=now&viewPanel=3"
+      - alert: node_cpu:user:percent
+        expr: node_cpu:user:percent > {$NODE.CPU.USER.WARN:"{{$labels.instance}}"}
+        for: "{$NODE.CPU.USER.WARN.TIME}"
+        annotations:
+          description: 'k8s_cluster: "{{$labels.k8s_cluster}}" instance: "{{$labels.instance}}" value: "{{$value}}"'
+          summary: CPU user above {$NODE.CPU.USER.WARN:"{{$labels.instance}}"}% on {{$labels.instance}} [{{$labels.node_addr}}]
+        labels:
+          __zbx_priority: "WARNING"
+          __zbx_trigger_expression: "min({{item_full_key}},{$NODE.CPU.USER.WARN.TIME})>{$NODE.CPU.USER.WARN}"
+          grafana_dashboard: "V3p8oIzWz2/node-exporter-metrics?orgId=1&var-datasource=VictoriaMetrics&var-job=node-exporter&var-node={{$labels.node_addr}}&from=now-3h&to=now&viewPanel=3"
+      - alert: node_cpu:steal:percent
+        expr: node_cpu:steal:percent > {$NODE.CPU.STEAL.WARN:"{{$labels.instance}}"}
+        for: 5m
+        annotations:
+          description: 'k8s_cluster: "{{$labels.k8s_cluster}}" instance: "{{$labels.instance}}" value: "{{$value}}"'
+          summary: CPU steal above {$NODE.CPU.STEAL.WARN:"{{$labels.instance}}"}% on {{$labels.instance}} [{{$labels.node_addr}}] (noisy neighbor or out of credits)
+        labels:
+          __zbx_priority: "WARNING"
+          grafana_dashboard: "V3p8oIzWz2/node-exporter-metrics?orgId=1&var-datasource=VictoriaMetrics&var-job=node-exporter&var-node={{$labels.node_addr}}&from=now-3h&to=now&viewPanel=3"
+      - alert: node_cpu:iowait:percent
+        expr: node_cpu:iowait:percent > {$NODE.CPU.IOWAIT.WARN:"{{$labels.instance}}"}
+        # NOTE: unused as a firing gate (same promabbix `for:` limitation described on
+        # node_cpu:utilization:percent above)
+        for: "{$NODE.CPU.IOWAIT.WARN.TIME}"
+        annotations:
+          description: 'k8s_cluster: "{{$labels.k8s_cluster}}" instance: "{{$labels.instance}}" value: "{{$value}}"'
+          summary: CPU iowait above {$NODE.CPU.IOWAIT.WARN:"{{$labels.instance}}"}% on {{$labels.instance}} [{{$labels.node_addr}}] (storage bottleneck)
+        labels:
+          __zbx_priority: "WARNING"
+          grafana_dashboard: "V3p8oIzWz2/node-exporter-metrics?orgId=1&var-datasource=VictoriaMetrics&var-job=node-exporter&var-node={{$labels.node_addr}}&from=now-3h&to=now&viewPanel=3"
+      - alert: node_cpu:load_avg_percpu:ratio
+        expr: node_cpu:load_avg_percpu:ratio > {$NODE.LOAD.PERCPU.WARN:"{{$labels.instance}}"}
+        for: 15m
+        annotations:
+          description: 'k8s_cluster: "{{$labels.k8s_cluster}}" instance: "{{$labels.instance}}" value: "{{$value}}"'
+          summary: Per-CPU load average above {$NODE.LOAD.PERCPU.WARN:"{{$labels.instance}}"} on {{$labels.instance}} [{{$labels.node_addr}}]
+        labels:
+          __zbx_priority: "AVERAGE"
+          grafana_dashboard: "V3p8oIzWz2/node-exporter-metrics?orgId=1&var-datasource=VictoriaMetrics&var-job=node-exporter&var-node={{$labels.node_addr}}&from=now-3h&to=now&viewPanel=7"

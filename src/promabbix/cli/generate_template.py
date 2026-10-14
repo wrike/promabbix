@@ -7,9 +7,10 @@
 import click
 import os
 import sys
-from typing import Any, Dict, Optional, cast
+from typing import Any, Dict, Optional, Sequence, Tuple, cast
 
 from ..core.fs_utils import DataLoader, DataSaver
+from ..core.loader import load_service
 from ..core.template import Render
 from ..core.validation import ConfigValidator, ValidationError
 from rich.console import Console
@@ -17,6 +18,13 @@ from rich.console import Console
 
 @click.command(name='generateTemplate')
 @click.argument('config_file', type=str)
+@click.option('-c', '--common',
+              'common_dirs',
+              multiple=True,
+              type=str,
+              help='Directory with shared *.yaml files merged UNDER a service directory input '
+                   '(repeatable, applied in the given order, the service overrides them). '
+                   'Only valid when CONFIG_FILE is a directory.')
 @click.option('-o', '--output',
               default='-',
               help='Path to save generated Zabbix template (use "-" for STDOUT)')
@@ -29,12 +37,30 @@ from rich.console import Console
 @click.option('--validate-only',
               is_flag=True,
               help='Only validate the configuration without generating templates')
-def generate_template(config_file: str, output: str, templates: Optional[str],
-                      template_name: str, validate_only: bool) -> None:
-    """Generate Zabbix template from alert configuration file."""
+def generate_template(config_file: str, common_dirs: Tuple[str, ...], output: str,
+                      templates: Optional[str], template_name: str, validate_only: bool) -> None:
+    """Generate Zabbix template from alert configuration file.
+
+    CONFIG_FILE is a unified YAML/JSON file, "-" for STDIN, or a service DIRECTORY.
+
+    \b
+    Directory input:
+      * all *.yaml / *.yml files of every --common directory and then of the service
+        directory are loaded in sorted file-name order and deep-merged: dicts are merged,
+        lists are APPENDED, scalars: the later file wins (so the service overrides common).
+      * files named *wiki_vars.yaml / *wiki_vars.yml in a --common directory are skipped:
+        they hold wiki-generator keys (wiki.url, wiki.base_space_path) rejected by the schema.
+      * 'groups' is normalised to exactly two entries, recording_rules and alerting_rules,
+        concatenating the rules of ALL *_alerts.yaml files.
+
+    \b
+    Example:
+      promabbix generateTemplate service/node_exporter --common common/ -o out.json
+    """
 
     command = GenerateTemplateCommand()
-    exit_code = command.execute(config_file, output, templates, template_name, validate_only)
+    exit_code = command.execute(config_file, output, templates, template_name, validate_only,
+                                common_dirs=common_dirs)
     if exit_code != 0:
         sys.exit(exit_code)
 
@@ -52,23 +78,25 @@ class GenerateTemplateCommand:
         self.console = Console(stderr=True)
 
     def execute(self, config_file: str, output: str, templates: Optional[str],
-                template_name: str, validate_only: bool) -> int:
+                template_name: str, validate_only: bool,
+                common_dirs: Sequence[str] = ()) -> int:
         """
         Execute the generateTemplate command.
 
         Args:
-            config_file: Path to configuration file
+            config_file: Path to configuration file, "-" for STDIN, or a service directory
             output: Output path for generated template
             templates: Path to template directory
             template_name: Template file name
             validate_only: If True, only validate without generating
+            common_dirs: Common directories merged under a service directory input
 
         Returns:
             Exit code (0 for success, 1 for failure)
         """
         try:
             # Load configuration
-            config_data = self.load_configuration(config_file)
+            config_data = self.load_configuration(config_file, common_dirs)
 
             # Validate configuration
             self.validate_configuration(config_data)
@@ -92,8 +120,13 @@ class GenerateTemplateCommand:
             self.console.print(f"[red]Error: {e}[/red]")
             return 1
 
-    def load_configuration(self, config_file: str) -> Dict[str, Any]:
-        """Load configuration from file or STDIN."""
+    def load_configuration(self, config_file: str,
+                           common_dirs: Sequence[str] = ()) -> Dict[str, Any]:
+        """Load configuration from a service directory (merged with common dirs), file or STDIN."""
+        if config_file != "-" and os.path.isdir(config_file):
+            return load_service(config_file, common_dirs)
+        if common_dirs:
+            raise ValueError("--common can only be used when the input is a service directory")
         if config_file == "-":
             return cast(Dict[str, Any], self.loader.load_from_stdin())
         else:

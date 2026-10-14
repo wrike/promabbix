@@ -1,0 +1,26 @@
+groups:
+  - name: recording_rules
+    rules:
+      - record: node_kernel:oom_kills:rate
+        expr: >-
+          label_replace(
+          label_move(
+            label_copy(
+            sum by(instance, k8s_cluster)(increase(node_vmstat_oom_kill[1h]))
+            * on(instance, k8s_cluster) group_left(nodename)
+            limitk(1, node_uname_info) by(instance, k8s_cluster),
+            "instance", "node_addr"
+            ),
+            "nodename", "instance"
+          ),
+          "node_addr", "$1", "node_addr", "([^:]+):.+"
+          )
+  - name: alerting_rules
+    rules:
+      - alert: node_kernel:oom_kills:rate
+        expr: node_kernel:oom_kills:rate > {$NODE.OOM.RATE.WARN:"{{$labels.instance}}"}
+        annotations:
+          description: 'k8s_cluster: "{{$labels.k8s_cluster}}" instance: "{{$labels.instance}}" value: "{{$value}}"'
+          summary: OOM killer invoked > {$NODE.OOM.RATE.WARN:"{{$labels.instance}}"} times in 1h on {{$labels.instance}} [{{$labels.node_addr}}]
+        labels:
+          __zbx_priority: "WARNING"

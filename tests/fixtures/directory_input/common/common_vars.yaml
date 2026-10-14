@@ -1,0 +1,13 @@
+# Trimmed from sysops-alert-config/common/common_vars.yaml, in the post-migration (schema-valid) form.
+zabbix:
+  template_prefix: templ_module_promt
+  labels:
+    __event_recovery_notify: "1"
+  tags:
+    - tag: __metric_source
+      value: prometheus
+    - tag: scope
+      value: sysops
+prometheus:
+  api:
+    url: "{$PROMT.API.URL}/query"

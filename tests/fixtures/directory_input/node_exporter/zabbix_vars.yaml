@@ -1,0 +1,77 @@
+# Trimmed from sysops-alert-config/service/node_exporter/zabbix_vars.yaml
+zabbix:
+  template: sysops_service_node_exporter
+  name: "Template Module Prometheus SysOps service Node Exporter"
+  labels:
+    slack_alarm_channel_name: '{$SLACK.ALARM.CHANNEL.NAME:""}'
+    wiki_page_tag: node_exporter
+  lld_filters:
+    filter:
+      conditions:
+        - formulaid: "A"
+          macro: "{#K8S_CLUSTER}"
+          value: "{$NODE.K8S_CLUSTER.LLD.MATCHES}"
+        - formulaid: "B"
+          macro: "{#INSTANCE}"
+          value: "{$NODE.INSTANCE.LLD.MATCHES}"
+      evaltype: "AND"
+  macros:
+    - macro: "{$NODE.K8S_CLUSTER.LLD.MATCHES}"
+      description: "Regex to match k8s_cluster labels for LLD."
+      value: "^$"
+    - macro: "{$NODE.INSTANCE.LLD.MATCHES}"
+      description: "Regex to match node-exporter instances for LLD."
+      value: ".*"
+    - macro: "{$NODE.CPU.UTIL.WARN}"
+      description: "CPU utilization warning threshold (%)"
+      value: "90"
+    - macro: "{$NODE.CPU.UTIL.WARN.TIME}"
+      description: "for: duration before CPU utilization alert fires"
+      value: "15m"
+    - macro: "{$NODE.CPU.SYS.WARN}"
+      description: "CPU system usage warning threshold (%)"
+      value: "30"
+    - macro: "{$NODE.CPU.SYS.CRIT}"
+      description: "CPU system usage critical threshold (%)"
+      value: "50"
+    - macro: "{$NODE.CPU.USER.WARN}"
+      description: "CPU user usage warning threshold (%)"
+      value: "80"
+    - macro: "{$NODE.CPU.USER.WARN.TIME}"
+      description: "for: duration before CPU user alert fires"
+      value: "5m"
+    - macro: "{$NODE.CPU.STEAL.WARN}"
+      description: "CPU steal warning threshold (%)"
+      value: "10"
+    - macro: "{$NODE.CPU.IOWAIT.WARN}"
+      description: "CPU iowait warning threshold (%)"
+      value: "10"
+    - macro: "{$NODE.CPU.IOWAIT.WARN.TIME}"
+      description: "for: duration before CPU iowait alert fires"
+      value: "5m"
+    - macro: "{$NODE.LOAD.PERCPU.WARN}"
+      description: "Per-CPU load average warning threshold"
+      value: "4"
+    - macro: "{$NODE.OOM.RATE.WARN}"
+      description: "OOM kill count threshold per 1h window."
+      value: "4"
+    - macro: "{$SLACK.ALARM.CHANNEL.NAME}"
+      description: "Slack channel for alert notifications"
+      value: ""
+  tags:
+    - tag: service_kind
+      value: node_exporter
+  hosts:
+    - host_name: node-exporter-prod
+      visible_name: Service Node Exporter Prod
+      host_groups:
+        - Production hosts
+        - Prometheus pseudo hosts
+      link_templates:
+        - templ_module_promt_sysops_service_node_exporter
+      status: enabled
+      state: present
+      proxy: gce-infra-zabbix-proxy-pgsql-2
+      macros:
+        - macro: "{$NODE.K8S_CLUSTER.LLD.MATCHES}"
+          value: "^(gce-prod-ap-k8s-.*)$"
