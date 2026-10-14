@@ -9,84 +9,93 @@ properties:
   additionalProperties: false
   groups:
     type: array
-    items: false
-    prefixItems:
-      - type: object
-        additionalProperties: false
-        required: ["name", "rules"]
-        properties:
-          name:
-            type: string
-            enum: ['recording_rules']
-            description: |
-              Predefined key value *name* with enum values:
-              * recording_rules
-          rules:
-            type: array
-            items:
-              type: object
-              required: ["expr", "record"]
-              additionalProperties: false
-              properties:
-                expr:
-                  type: string
-                  description: PromQL expression to evaluate (recording_rules)
-                record:
-                  type: string
-                  description: |-
-                    Predefined key value *record*. A record should have a unique value for all record list.
-                    Available delimiter: `:`. The maximum value length is 160 chars.
-                    Example: wrike_log_events_total:syslog_level:3
-                  minLength: 3
-                  maxLength: 160
-                labels:
-                  type: object
-                  additionalProperties:
+    minItems: 1
+    maxItems: 2
+    items:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: ["name", "rules"]
+          properties:
+            name:
+              type: string
+              enum: ['recording_rules']
+              description: |
+                Predefined key value *name* with enum values:
+                * recording_rules
+            rules:
+              type: array
+              items:
+                type: object
+                required: ["expr", "record"]
+                additionalProperties: false
+                properties:
+                  expr:
                     type: string
-                  description: Key-value pairs to attach metadata to alerts
-      - type: object
-        required: ["name", "rules"]
-        properties:
-          name:
-            type: string
-            description: |
-              Predefined key value *name* with enum values:
-              * alerting_rules
-            enum: ['alerting_rules']
-          rules:
-            type: array
-            items:
-              type: object
-              additionalProperties: false
-              required: ["alert", "expr"]
-              properties:
-                expr:
-                  type: string
-                  description: PromQL expression to evaluate (recording_rules) or Zabbix expression (alerting_rules)
-                alert:
-                  type: string
-                  description: Referring to recording_rules.record
-                  minLength: 3
-                  maxLength: 160
-                for:
-                  type: string
-                  description: Optional duration the expression must be true before firing the alert
-                labels:
-                  type: object
-                  additionalProperties:
+                    description: PromQL expression to evaluate (recording_rules)
+                  record:
                     type: string
-                  description: Key-value pairs to attach metadata to alerts
-                annotations:
-                  type: object
-                  additionalProperties: false
-                  description: Key-value pairs for alert description and summary
-                  properties:
-                    description:
+                    description: |-
+                      Predefined key value *record*. A record should have a unique value for all record list.
+                      Available delimiter: `:`. The maximum value length is 160 chars.
+                      Example: wrike_log_events_total:syslog_level:3
+                    minLength: 3
+                    maxLength: 160
+                  labels:
+                    type: object
+                    additionalProperties:
                       type: string
-                      description: Alert description
-                    summary:
+                    description: Key-value pairs to attach metadata to alerts
+        - type: object
+          additionalProperties: false
+          required: ["name", "rules"]
+          properties:
+            name:
+              type: string
+              description: |
+                Predefined key value *name* with enum values:
+                * alerting_rules
+              enum: ['alerting_rules']
+            rules:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: ["alert", "expr"]
+                properties:
+                  expr:
+                    type: string
+                    description: PromQL expression to evaluate (recording_rules) or Zabbix expression (alerting_rules)
+                  alert:
+                    type: string
+                    description: Referring to recording_rules.record
+                    minLength: 3
+                    maxLength: 160
+                  for:
+                    type: string
+                    description: Optional duration the expression must be true before firing the alert
+                  labels:
+                    type: object
+                    additionalProperties:
                       type: string
-                      description: Alert description
+                    description: Key-value pairs to attach metadata to alerts
+                    properties:
+                      __zbx_priority:
+                        type: string
+                        enum: ['INFO', 'WARNING', 'AVERAGE', 'HIGH', 'DISASTER']
+                        description: Zabbix trigger severity
+                  annotations:
+                    type: object
+                    additionalProperties: false
+                    required: ["summary"]
+                    description: Key-value pairs for alert description and summary
+                    properties:
+                      description:
+                        type: string
+                        description: Alert description
+                      summary:
+                        type: string
+                        description: Alert description
   prometheus:
     type: object
     additionalProperties: false
