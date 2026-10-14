@@ -7,6 +7,7 @@
 import click
 
 from .cli.generate_template import generate_template
+from .cli.sync_template import sync_pseudo_hosts_cmd, sync_template_cmd
 
 
 @click.group(invoke_without_command=True)
@@ -20,6 +21,8 @@ def cli(ctx: click.Context) -> None:
 
 # Register subcommands
 cli.add_command(generate_template)
+cli.add_command(sync_template_cmd)
+cli.add_command(sync_pseudo_hosts_cmd)
 
 
 def main() -> None:
