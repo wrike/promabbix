@@ -11,11 +11,21 @@ This module provides functionality to:
 - Detect legacy vs unified format configurations
 - Migrate legacy three-file structures to unified format
 - Support builder script integration for format detection
+
+For the directory input of ``generateTemplate`` (``<service_dir> --common <dir>``) see
+:func:`promabbix.core.loader.load_service`, re-exported here.
 """
 
 import yaml
 from pathlib import Path
-from typing import Dict, Any, Union, Optional, cast
+from typing import Dict, Any, List, Union, Optional, cast
+
+from .loader import load_service, normalize_groups
+
+__all__ = [
+    'detect_config_format', 'migrate_legacy_service', 'detect_builder_script_format',
+    'save_unified_config', 'load_service',
+]
 
 
 def detect_config_format(config_path: Union[str, Path]) -> str:
@@ -85,13 +95,14 @@ def migrate_legacy_service(service_dir: Union[str, Path]) -> Dict[str, Any]:
         raise ValueError(f"Service path {service_path} is not a directory")
 
     # Find required files
-    alerts_file = _find_alerts_file(service_path)
+    alerts_files = _find_alerts_files(service_path)
     zabbix_file = service_path / 'zabbix_vars.yaml'
     wiki_file = service_path / 'wiki_vars.yaml'
 
-    # Build unified configuration
-    unified_config = {}
-    unified_config['groups'] = _load_alerts_section(alerts_file)
+    # Build unified configuration. Defaults (master item JS, Prometheus API URL, ...) are
+    # deliberately NOT injected here: the Jinja2 template is their single source of truth.
+    unified_config: Dict[str, Any] = {}
+    unified_config['groups'] = _load_alerts_section(alerts_files)
     unified_config['zabbix'] = _load_zabbix_section(zabbix_file)
 
     # Load optional wiki section
@@ -99,30 +110,30 @@ def migrate_legacy_service(service_dir: Union[str, Path]) -> Dict[str, Any]:
     if wiki_data:
         unified_config['wiki'] = wiki_data
 
-    # Add default sections
-    _add_default_sections(unified_config)
-
     return unified_config
 
 
-def _find_alerts_file(service_path: Path) -> Path:
-    """Find the alerts file in the service directory."""
-    alert_files = list(service_path.glob('*_alerts.yaml'))
+def _find_alerts_files(service_path: Path) -> List[Path]:
+    """Find ALL alerts files (``*_alerts.yaml``) in the service directory, in sorted order."""
+    alert_files = sorted(service_path.glob('*_alerts.yaml'), key=lambda f: f.name)
     if not alert_files:
         raise FileNotFoundError(f"No *_alerts.yaml file found in {service_path}")
-    return alert_files[0]
+    return alert_files
 
 
-def _load_alerts_section(alerts_file: Path) -> Dict[str, Any]:
-    """Load and validate alerts section."""
-    if not alerts_file.exists():
-        raise FileNotFoundError(f"Alerts file {alerts_file} not found")
+def _load_alerts_section(alerts_files: List[Path]) -> List[Dict[str, Any]]:
+    """Load every alerts file and return ``groups`` normalised to the two canonical groups."""
+    merged: Dict[str, Any] = {'groups': []}
+    for alerts_file in alerts_files:
+        if not alerts_file.exists():
+            raise FileNotFoundError(f"Alerts file {alerts_file} not found")
 
-    with open(alerts_file, 'r') as f:
-        alerts_data = yaml.safe_load(f)
+        with open(alerts_file, 'r') as f:
+            alerts_data = yaml.safe_load(f)
         if not (alerts_data and 'groups' in alerts_data):
             raise ValueError(f"Invalid alerts file format in {alerts_file}")
-        return cast(Dict[str, Any], alerts_data['groups'])
+        merged['groups'].extend(alerts_data['groups'])
+    return cast(List[Dict[str, Any]], normalize_groups(merged)['groups'])
 
 
 def _load_zabbix_section(zabbix_file: Path) -> Dict[str, Any]:
@@ -151,32 +162,6 @@ def _load_wiki_section(wiki_file: Path) -> Optional[Dict[str, Any]]:
         # Wiki is optional, so we can ignore parsing errors
         pass
     return None
-
-
-def _add_default_sections(unified_config: Dict[str, Any]) -> None:
-    """Add default prometheus and promabbix sections if missing."""
-    if 'prometheus' not in unified_config:
-        unified_config['prometheus'] = {
-            'api': {
-                'url': 'http://victoria-metrics.monitoring.svc:8481/api/v1/query'
-            }
-        }
-
-    if 'promabbix' not in unified_config:
-        unified_config['promabbix'] = {
-            'zabbix_depend_item_preprocessing': '$.metrics["{#ZBX.ITEM.SUBKEY}"]',
-            'zabbix_master_item_preprocessing': '''var ingest_json = JSON.parse(value),
-    metrics = ingest_json.data.result || [],
-    result = { "lld": [], "metrics": {} };
-for (var i = 0; i < metrics.length; i++) {
-    var metric = metrics[i];
-    var labels = metric.metric || {};
-    var key = Object.keys(labels).map(k => labels[k]).join('_') || 'default';
-    result.lld.push(labels);
-    result.metrics[key] = metric.value[1];
-}
-return JSON.stringify(result);'''
-        }
 
 
 def detect_builder_script_format(config_path: Union[str, Path]) -> Optional[str]:
